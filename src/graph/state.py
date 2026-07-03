@@ -9,7 +9,8 @@ class AgentState(TypedDict, total=False):
 
     # Input
     question: str
-    profile: dict
+    profile: dict           # (legacy) first dataset's profile
+    profiles: dict          # Phase 2: table_name -> profile, all in-scope datasets
     messages: list          # prior chat turns [{role, content}]
 
     # Pipeline data (populated progressively)

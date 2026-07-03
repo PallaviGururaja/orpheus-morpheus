@@ -71,9 +71,11 @@ def test_session_queries_not_found(api_client):
     assert r.status_code == 404
 
 
-def test_phase2_stub_501(api_client):
+def test_phase2_stream_implemented(api_client):
+    # /ask/stream ships in Phase 2 — it is no longer a 501 stub. Called with no
+    # params it fails validation (422 missing query params), never 501.
     r = api_client.get("/ask/stream")
-    assert r.status_code == 501
+    assert r.status_code != 501
 
 
 def test_phase3_stub_501(api_client):

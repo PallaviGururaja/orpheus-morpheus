@@ -21,9 +21,10 @@ Streams the agent's progress live — a per-step trace, a "Step 3 of 6" counter,
 | Analysis engine | Executes per step | error event fed to inspect loop |
 
 ## Business Rules
-- Events emit from each node via the observability layer; the total-step estimate updates as the loop iterates.
-- If the client disconnects, the run still finishes and persists its audit row.
+- Events emit at each node transition via a runner-level wrapper over `agentic_ai.stream(...)`; the total-step estimate is `max_steps`.
+- **Reclaimable lock (folded-in robustness fix):** a run whose client disconnects (refresh/close/dropped connection) or that exceeds its timeout must be marked `status="failed"` and release the per-session concurrency lock — it must NOT stay `pending` and block later `/ask` with a permanent 409. A 409 means a genuinely live run.
 
 ## Success Criteria
 - [ ] The UI shows an advancing step counter and elapsed timer during a run.
 - [ ] Answer text streams incrementally, then the final audit row matches the streamed answer.
+- [ ] After a mid-run client disconnect, the abandoned query becomes `failed` and the next `/ask` on that session succeeds (no permanent 409) — covered by `tests/phase2/test_lock_reclaim.py`.

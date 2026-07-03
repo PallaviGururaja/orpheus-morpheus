@@ -67,6 +67,24 @@ export interface QuerySummary {
   verified: boolean
 }
 
+// --- Phase 2: streaming step-trace events (spec/api.md `GET /ask/stream`) ---
+
+export interface StepEvent {
+  step: number
+  total_estimate: number
+  node: string
+  elapsed_ms: number
+}
+
+export interface TokenEvent {
+  text: string
+}
+
+export interface StreamErrorEvent {
+  code: string
+  message: string
+}
+
 export interface ApiError {
   code: string
   message: string

@@ -5,19 +5,21 @@ import remarkGfm from 'remark-gfm'
 import type { AskResponse } from '../lib/types'
 import ChartView from './ChartView'
 import CodePanel from './CodePanel'
-import { ComingSoonBadge, StubButton } from './Stub'
 
 // Renders a completed answer: written text (markdown), summary table, optional
-// chart, and the collapsible code panel. Follow-up chips + step-trace are
-// labelled Phase-2 stubs.
+// chart, editable code panel (with rerun), and real Phase-2 follow-up chips.
 export default function AnswerBlock({
   answer,
   question,
-  onStub,
+  followups,
+  onFollowup,
+  onRerun,
 }: {
   answer: AskResponse
   question: string
-  onStub: (message: string) => void
+  followups: string[]
+  onFollowup: (question: string) => void
+  onRerun: (code: string) => Promise<void>
 }) {
   const columns = answer.result_table.length > 0 ? Object.keys(answer.result_table[0]) : []
 
@@ -32,9 +34,7 @@ export default function AnswerBlock({
         <span
           className={
             'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ' +
-            (answer.verified
-              ? 'bg-green-50 text-green-700'
-              : 'bg-gray-100 text-gray-500')
+            (answer.verified ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500')
           }
         >
           {answer.verified ? '✓ Verified' : 'Unverified'}
@@ -81,36 +81,27 @@ export default function AnswerBlock({
 
       <ChartView spec={answer.chart_spec} rows={answer.result_table} />
 
-      <CodePanel code={answer.code} onStub={onStub} />
+      <CodePanel code={answer.code} onRerun={onRerun} />
 
-      {/* Labelled Phase-2 stubs */}
-      <div className="mt-5 border-t border-gray-100 pt-4">
-        <div className="mb-2 flex items-center text-xs font-medium text-gray-400">
-          Suggested follow-ups
-          <ComingSoonBadge phase="Phase 2" />
+      {/* Follow-up chips (real, Phase 2) */}
+      {followups.length > 0 && (
+        <div className="mt-5 border-t border-gray-100 pt-4">
+          <div className="mb-2 text-xs font-medium text-gray-400">Suggested follow-ups</div>
+          <div className="flex flex-wrap gap-2" data-testid="followups">
+            {followups.map(s => (
+              <button
+                key={s}
+                type="button"
+                data-testid="followup-chip"
+                onClick={() => onFollowup(s)}
+                className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {['Break this down by month', 'Show the top 5 only', 'Compare to last period'].map(s => (
-            <button
-              key={s}
-              type="button"
-              aria-disabled="true"
-              title="Follow-up suggestions — coming in Phase 2"
-              onClick={() => onStub('Follow-up suggestions are coming in Phase 2.')}
-              className="cursor-not-allowed rounded-full border border-dashed border-gray-300 bg-gray-50 px-3 py-1 text-xs text-gray-400"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-        <div className="mt-3">
-          <StubButton
-            label="Live step trace & elapsed timer"
-            phase="Phase 2"
-            onStub={onStub}
-          />
-        </div>
-      </div>
+      )}
     </section>
   )
 }

@@ -1,10 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { ComingSoonBadge } from './Stub'
 
-// Plain-English question input → POST /ask (parent owns the call). Disabled until
-// a dataset is loaded. Shows the "Analyzing locally…" state while the agent works.
+// Plain-English question input → GET /ask/stream (parent owns the call). Disabled
+// until a dataset is loaded. Live progress (step counter + timer) renders in the
+// parent's StepTrace while the agent streams.
 export default function QuestionBox({
   onAsk,
   loading,
@@ -44,9 +44,8 @@ export default function QuestionBox({
         }}
       />
       <div className="mt-2 flex items-center justify-between">
-        <span className="flex items-center text-xs text-gray-400">
-          Step trace & timer
-          <ComingSoonBadge phase="Phase 2" />
+        <span className="text-xs text-gray-400">
+          Runs locally · live step trace &amp; timer
         </span>
         <button
           type="submit"

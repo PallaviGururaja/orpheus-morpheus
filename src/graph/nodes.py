@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 from analysis.charts import select_chart
-from analysis.engine import load_csv
+from analysis.engine import load_csv, load_tables, table_name_for
 from analysis.executor import execute_python
 from analysis.profiler import profile_dataframe
 from db.models import Dataset
@@ -42,8 +42,36 @@ def _extract_code(text: str) -> str:
     return text.strip()
 
 
+def _resolve_tables(dataset_ids: list[str]) -> list[dict]:
+    """Load the in-scope dataset rows and assign each a stable table name.
+
+    Returns an ordered list of ``{table_name, dataset_id, storage_path, profile,
+    name}`` dicts — in ``dataset_ids`` order — so ``plan`` (profiles) and
+    ``execute_code`` (DataFrames) agree on table names.
+    """
+    if not dataset_ids:
+        raise ValueError("No dataset in scope for this question.")
+    resolved: list[dict] = []
+    taken: set[str] = set()
+    with create_db_session() as session:
+        for did in dataset_ids:
+            ds = session.get(Dataset, did)
+            if ds is None:
+                raise ValueError(f"Unknown dataset: {did}")
+            resolved.append(
+                {
+                    "table_name": table_name_for(ds.name, taken),
+                    "dataset_id": ds.id,
+                    "name": ds.name,
+                    "storage_path": ds.storage_path,
+                    "profile": ds.profile or {},
+                }
+            )
+    return resolved
+
+
 def _load_dataframe(dataset_ids: list[str]):
-    """Resolve the (first) dataset's on-disk CSV into a DataFrame."""
+    """Back-compat single-dataset loader (first dataset only)."""
     if not dataset_ids:
         raise ValueError("No dataset in scope for this question.")
     with create_db_session() as session:
@@ -52,6 +80,12 @@ def _load_dataframe(dataset_ids: list[str]):
             raise ValueError(f"Unknown dataset: {dataset_ids[0]}")
         path = ds.storage_path
     return load_csv(path)
+
+
+def _load_dataframes(dataset_ids: list[str]) -> dict:
+    """Resolve every in-scope dataset to a ``{table_name: DataFrame}`` map."""
+    resolved = _resolve_tables(dataset_ids)
+    return load_tables([(t["table_name"], t["storage_path"]) for t in resolved])
 
 
 def _messages_context(state: AgentState) -> str:
@@ -65,20 +99,59 @@ def _messages_context(state: AgentState) -> str:
 # --------------------------------------------------------------------------- #
 # Nodes
 # --------------------------------------------------------------------------- #
+def _profiles_prompt(profiles: dict) -> str:
+    """Render one or many table profiles for the LLM prompt."""
+    if len(profiles) == 1:
+        (tname, prof), = profiles.items()
+        return (
+            f"Dataset table `{tname}` profile:\n{json.dumps(prof, default=str)}"
+        )
+    parts = ["You have MULTIPLE datasets loaded. Each is a table you can join/union/compare:"]
+    for tname, prof in profiles.items():
+        cols = [c.get("name") for c in prof.get("columns", [])]
+        parts.append(
+            f"- Table `{tname}` — {prof.get('row_count', '?')} rows, columns: {cols}"
+        )
+    parts.append("\nFull profiles:\n" + json.dumps(profiles, default=str))
+    return "\n".join(parts)
+
+
 def plan(state: AgentState) -> AgentState:
     try:
+        # Phase 2: load EVERY in-scope dataset's cached profile, keyed by table name.
+        profiles: dict = {}
+        try:
+            for t in _resolve_tables(state.get("dataset_ids", [])):
+                profiles[t["table_name"]] = t["profile"]
+        except Exception as exc:
+            return {**state, "error": f"plan failed: {exc}"}
+
         client = LLMClient()
-        profile_json = json.dumps(state.get("profile", {}), default=str)
+        multi = len(profiles) > 1
+        selection_hint = (
+            "\nName WHICH table(s) are relevant and, if more than one is needed, "
+            "the JOIN or UNION key columns. Use only the datasets the question "
+            "actually needs.\n"
+            if multi
+            else ""
+        )
         prompt = (
             f"{_messages_context(state)}"
-            f"Dataset profile:\n{profile_json}\n\n"
-            f"Question: {state['question']}\n\nWrite the strategy."
+            f"{_profiles_prompt(profiles)}\n\n"
+            f"Question: {state['question']}\n"
+            f"{selection_hint}\nWrite the strategy."
         )
         plan_text = client.call_model(prompt, system=_prompt("plan.md"))
-        _log.info("node.plan", run_id=state.get("run_id"), step=1)
+        _log.info(
+            "node.plan",
+            run_id=state.get("run_id"),
+            step=1,
+            tables=list(profiles.keys()),
+        )
         return {
             **state,
             "plan": plan_text.strip(),
+            "profiles": profiles,
             "step": 1,
             **_accumulate_tokens(state, client),
         }
@@ -90,9 +163,31 @@ def plan(state: AgentState) -> AgentState:
 def write_code(state: AgentState) -> AgentState:
     try:
         client = LLMClient()
-        profile_json = json.dumps(state.get("profile", {}), default=str)
+        profiles = state.get("profiles") or {}
+        if profiles:
+            names = list(profiles.keys())
+            if len(names) > 1:
+                var_note = (
+                    "The following pandas DataFrames are ALREADY loaded (do NOT read files) "
+                    f"and also registered as DuckDB tables of the same name: {names}. "
+                    "Join/union/compare them as the question requires. "
+                    "To run SQL you MUST use the provided connection: `con.execute(sql).df()` "
+                    "— do NOT call duckdb.query()/duckdb.sql(); only `con` has these tables. "
+                    "Prefer pandas merges (e.g. a.merge(b, on='key')) when simpler.\n"
+                )
+            else:
+                var_note = (
+                    f"A pandas DataFrame `{names[0]}` (also available as `df`) is loaded, "
+                    "and registered on the DuckDB connection `con` under both names. "
+                    "For SQL use `con.execute(sql).df()`, not duckdb.query()/duckdb.sql().\n"
+                )
+            profile_block = var_note + "Profiles:\n" + json.dumps(profiles, default=str)
+        else:
+            profile_block = "Dataset profile:\n" + json.dumps(
+                state.get("profile", {}), default=str
+            )
         parts = [
-            f"Dataset profile:\n{profile_json}",
+            profile_block,
             f"Plan:\n{state.get('plan', '')}",
             f"Question: {state['question']}",
         ]
@@ -116,7 +211,7 @@ def execute_code(state: AgentState) -> AgentState:
     """Runs generated code in the restricted namespace. Never raises."""
     step = state.get("step", 1) + 1
     try:
-        df = _load_dataframe(state.get("dataset_ids", []))
+        tables = _load_dataframes(state.get("dataset_ids", []))
     except Exception as exc:
         return {
             **state,
@@ -127,7 +222,7 @@ def execute_code(state: AgentState) -> AgentState:
             "result_table": [],
         }
 
-    outcome = execute_python(state.get("code", ""), df)
+    outcome = execute_python(state.get("code", ""), tables=tables)
     chart_spec = None
     if not outcome["exec_error"]:
         chart_spec = select_chart(outcome["result_table"])

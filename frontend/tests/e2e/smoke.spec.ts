@@ -42,7 +42,7 @@ test('upload CSV, see profile, ask a question, get an answer with a table', asyn
   await expect(table).toBeVisible()
   await expect(table.locator('tbody tr')).not.toHaveCount(0)
 
-  // Generated code is inspectable.
+  // Generated code is inspectable (Phase 2: now an editable editor).
   await page.getByTestId('code-toggle').click()
-  await expect(page.getByTestId('code-block')).toBeVisible()
+  await expect(page.getByTestId('code-editor')).toBeVisible()
 })

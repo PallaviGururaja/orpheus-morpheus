@@ -5,23 +5,10 @@ from api._common import api_error
 
 router = APIRouter()
 
-_P2 = "This endpoint ships in Phase 2 — not yet implemented."
 _P3 = "This endpoint ships in Phase 3 — not yet implemented."
 
-
-@router.get("/ask/stream")
-def ask_stream() -> dict:
-    raise api_error("NOT_IMPLEMENTED", _P2, 501)
-
-
-@router.post("/queries/{query_id}/rerun")
-def rerun(query_id: str) -> dict:
-    raise api_error("NOT_IMPLEMENTED", _P2, 501)
-
-
-@router.get("/queries/{query_id}/followups")
-def followups(query_id: str) -> dict:
-    raise api_error("NOT_IMPLEMENTED", _P2, 501)
+# Phase 2 endpoints (/ask/stream, /queries/{id}/rerun, /queries/{id}/followups)
+# are now implemented in api.ask / api.rerun / api.followups.
 
 
 @router.post("/datasets/connect-db")

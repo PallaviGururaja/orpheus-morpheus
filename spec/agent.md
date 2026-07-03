@@ -16,7 +16,7 @@
 | `write_code` | Ollama (local) | `qwen2.5-coder:7b` | Code model generates the pandas/DuckDB Python |
 | `inspect` (fix decision) | Ollama (local) | `qwen2.5-coder:7b` | Reads the error/result and decides fix vs done |
 | `verify` | Ollama (local) | `qwen2.5-coder:7b` | Composes the written answer and reconciles numbers |
-| `followup_suggestions` (Phase 2) | Ollama (local) | `qwen2.5-coder:7b` | Proposes 2-3 follow-up questions |
+| `generate_followups` (Phase 2, standalone — not a graph node) | Ollama (local) | `qwen2.5-coder:7b` | Proposes 2-3 follow-up questions; called post-hoc by `GET /queries/{id}/followups` |
 
 All nodes use the single local model via `AGENT_LLM_MODEL`; no per-node model switching (one local model is available). Model is env-configurable via `AGENT_LLM_MODEL`.
 
@@ -32,7 +32,7 @@ The agent does not use LLM-driven tool selection; nodes call the analysis engine
 
 | Tool name | Description | Inputs | Output | Side-effects |
 |-----------|-------------|--------|--------|--------------|
-| `execute_python` | Runs generated code in a restricted namespace with datasets pre-bound | `code: str`, dataset handles | `result` value + captured stdout/error + repr | None outside the namespace (no fs/net) |
+| `execute_python` | Runs generated code in a restricted namespace with datasets pre-bound. **Phase 2 multi-dataset:** accepts a `tables: dict[str, DataFrame]` (name → frame); each is registered as a DuckDB table `con.register(name, frame)` and exposed as a same-named variable in the namespace so code can JOIN/COMPARE/UNION. The single-dataset `df` binding is kept as the first/only table for back-compat. | `code: str`, `tables: dict[str,DataFrame]` (or a single `df`) | `result` value + captured stdout/error + repr | None outside the namespace (no fs/net) |
 | `profile_dataframe` | Computes columns, dtypes, ranges, row count, null/dup/outlier flags | DataFrame | profile dict | None |
 | `select_chart` | Picks bar/line/scatter (or none) from the result shape | result table | chart spec | None |
 
@@ -53,7 +53,8 @@ class AgentState(TypedDict, total=False):
 
     # Input
     question: str                     # the user's plain-English question
-    profile: dict                     # dataset profile(s), from profile_dataset
+    profile: dict                     # (legacy) first dataset's profile
+    profiles: dict                    # Phase 2: table_name -> profile, all in-scope datasets
     messages: list                    # prior chat turns (session memory)
 
     # Pipeline data (populated progressively)
@@ -86,8 +87,8 @@ class AgentState(TypedDict, total=False):
 **LLM call:** no. **External:** analysis engine (`profile_dataframe`). Loads each dataset and computes the profile. (In Phase 1 called once at upload time and cached on the `datasets` row; the ask-graph reads the cached profile, so this node reads from DB rather than recomputing.)
 
 ### `plan`
-**Reads:** `question`, `profile`, `messages`. **Writes:** `plan`, `step=1`.
-**LLM call:** yes (`plan.md`). Produces a short strategy (which columns, what aggregation, any join). On LLM failure: set `error` → `handle_error`.
+**Reads:** `question`, `dataset_ids`, `messages`. **Writes:** `plan`, `profiles`, `step=1`.
+**LLM call:** yes (`plan.md`). **Phase 2 multi-dataset:** loads the cached profile of **every** in-scope dataset from the DB (by `dataset_ids`) into `profiles` (keyed by table name), passes all of them to the model, and produces a short strategy that names which columns/tables and any join/union — automatically selecting the relevant datasets when the question implies specific ones. (Loading all profiles here keeps `runner.py` free of multi-dataset logic — a slice-independence decision.) On LLM failure: set `error` → `handle_error`.
 
 ### `write_code`
 **Reads:** `plan`, `profile`, `code`, `exec_error`. **Writes:** `code`.
@@ -95,7 +96,7 @@ class AgentState(TypedDict, total=False):
 
 ### `execute_code`
 **Reads:** `code`, `dataset_ids`. **Writes:** `exec_stdout`, `exec_error`, `result_repr`, `result_table`, `chart_spec`, increments `step`.
-**LLM call:** no. **External:** `execute_python` (restricted namespace, datasets pre-bound). Never raises — captures errors into `exec_error`.
+**LLM call:** no. **External:** `execute_python` (restricted namespace, datasets pre-bound). **Phase 2:** `_load_dataframes(dataset_ids)` resolves every in-scope dataset to a `dict[table_name, DataFrame]` and passes it to `execute_python`, which registers each as a DuckDB table and a namespace variable. Never raises — captures errors into `exec_error`.
 
 ### `inspect`
 **Reads:** `exec_error`, `result_repr`, `step`, `max_steps`. **Writes:** routing only (no LLM needed for the pure-error case; for ambiguous-but-clean results a light LLM check decides "good enough").
@@ -105,9 +106,10 @@ class AgentState(TypedDict, total=False):
 **Reads:** `question`, `result_repr`, `result_table`, `code`. **Writes:** `answer_text`, `verified`, refines `chart_spec`.
 **LLM call:** yes (`verify.md`). Composes the written answer AND reconciles headline numbers against the result (e.g. sums/row counts). If reconciliation fails and `step < max_steps`, routes back to `write_code`; else finalizes with `verified=False` and a flagged assumption.
 
-### `followup_suggestions` (Phase 2)
-**Reads:** `question`, `answer_text`, `profile`. **Writes:** `followups`.
-**LLM call:** yes (`followups.md`). Non-fatal — on failure logs and continues with empty `followups`.
+### `generate_followups` (Phase 2 — standalone helper, NOT a graph node)
+**Where:** `src/graph/followups.py`, called by `GET /queries/{id}/followups` after the run completes — deliberately **outside** the ask-graph so the streaming ask path stays unchanged and the `backend-stream` slice never edits `nodes.py`.
+**Reads:** the persisted query's `question`, `answer_text`, and dataset `profile`. **Returns:** `list[str]` (2-3 questions).
+**LLM call:** yes (`followups.md`). Non-fatal — on failure returns an empty list.
 
 ### `finalize`
 **Reads:** all output fields. **Writes:** `status="completed"`. Persists the final `queries` audit row (question, final code, result, chart, tokens, elapsed).
@@ -210,9 +212,11 @@ Observability is wired in Phase 1 (structured request/response + per-node loggin
 
 ## Concurrency Model
 
-- **Run isolation:** one analysis run at a time per session; each run is `run_id`-scoped. Single-user tool — a second concurrent `POST /ask` for the same session returns 409; different sessions may proceed independently.
+- **Run isolation:** one analysis run at a time per session; each run is `run_id`-scoped. Single-user tool — a second concurrent `POST /ask`/`GET /ask/stream` for the same session returns 409; different sessions may proceed independently.
+- **Reclaimable lock (Phase 2 fix):** the per-session lock (`_running_sessions` in `src/api/ask.py`) must not strand a session. When a run's client disconnects (browser refresh/close/dropped connection) or a run exceeds its timeout, the pending query is marked `failed` and the lock released — via a run timeout that fails-and-releases and/or preempting a stale lock on a new request. A 409 therefore signals a genuinely live run, never a stuck one. (Bug being fixed: previously a mid-run disconnect left `status="pending"` forever and held the lock, blocking every later `/ask` with 409.)
 - **Parallel nodes within a run:** none — the pipeline is sequential by nature (each step depends on the prior).
-- **Checkpointing:** none in Phase 1 (runs are short). Phase 2 streaming uses in-memory event emission, not a persisted checkpointer.
+- **Streaming (Phase 2):** `GET /ask/stream` runs the SAME compiled graph via a runner-level wrapper over `agentic_ai.stream(...)` (LangGraph node-output streaming), emitting a `step` SSE event per node transition (step index, `total_estimate=max_steps`, elapsed) and `token`/`done`/`error` events — no per-node code change, so the graph topology is identical to Phase 1.
+- **Checkpointing:** none (runs are short). Streaming uses in-memory event emission, not a persisted checkpointer.
 
 ---
 

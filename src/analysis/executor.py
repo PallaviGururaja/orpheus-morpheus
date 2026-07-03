@@ -134,27 +134,58 @@ def _to_result_table(result: Any) -> list[dict]:
     return out
 
 
-def execute_python(code: str, df: pd.DataFrame) -> dict:
+def execute_python(
+    code: str,
+    df: pd.DataFrame | None = None,
+    tables: dict[str, pd.DataFrame] | None = None,
+) -> dict:
     """Execute generated code; never raises. Returns captured result + error.
 
-    The namespace exposes ``df`` (a copy of the dataset), ``pd``, ``np`` and a
-    DuckDB connection ``con`` with the dataset registered as table ``df``.
+    Two forms are supported:
+
+    * **Single-dataset (Phase 1):** pass ``df`` — the namespace exposes ``df``
+      (a copy) and a DuckDB table ``df``.
+    * **Multi-dataset (Phase 2):** pass ``tables`` — a ``{name: DataFrame}`` map.
+      Each frame is registered as a DuckDB table ``name`` and exposed as a
+      same-named namespace variable so generated code can JOIN/COMPARE/UNION
+      across them. For back-compat, ``df`` is also bound to the FIRST table.
+
+    In both cases ``pd``, ``np`` and a DuckDB connection ``con`` are available.
     The code is expected to assign to ``result``.
     """
-    con = duckdb.connect(database=":memory:")
-    try:
-        con.register("df", df)
-    except Exception:
-        pass
+    # Normalise both forms into an ordered {name: DataFrame} map.
+    if tables is None:
+        tables = {}
+    else:
+        tables = dict(tables)  # preserve caller order, own copy
+    if df is not None and "df" not in tables:
+        # Single-dataset form (or explicit df override): make it the first table.
+        tables = {"df": df, **tables}
+    if not tables:
+        raise ValueError("execute_python requires a `df` or a non-empty `tables` map.")
 
+    con = duckdb.connect(database=":memory:")
     namespace: dict = {
         "__builtins__": _safe_builtins(),
-        "df": df.copy(),
         "pd": pd,
         "np": np,
         "con": con,
         "duckdb": duckdb,
     }
+    for name, frame in tables.items():
+        try:
+            con.register(name, frame)
+        except Exception:
+            pass
+        namespace[name] = frame.copy()
+    # Back-compat: expose the first table as `df` if not already named so.
+    if "df" not in namespace:
+        first_frame = next(iter(tables.values()))
+        namespace["df"] = first_frame.copy()
+        try:
+            con.register("df", first_frame)
+        except Exception:
+            pass
 
     stdout_buf = io.StringIO()
     result_error: str | None = None

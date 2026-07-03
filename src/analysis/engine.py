@@ -26,3 +26,34 @@ def store_upload(dataset_id: str, filename: str, content: bytes) -> str:
 def load_csv(path: str) -> pd.DataFrame:
     """Load a CSV file from disk into a pandas DataFrame."""
     return pd.read_csv(path)
+
+
+def table_name_for(name: str, taken: set[str]) -> str:
+    """Derive a SQL/identifier-safe table name from a dataset name.
+
+    Strips the extension, lowercases, replaces non-alphanumerics with ``_``,
+    and disambiguates collisions with a numeric suffix so several datasets in
+    one session never map to the same table name.
+    """
+    import re
+
+    stem = Path(name).stem or "table"
+    safe = re.sub(r"[^0-9a-zA-Z]+", "_", stem).strip("_").lower()
+    if not safe or not safe[0].isalpha():
+        safe = f"t_{safe}" if safe else "table"
+    candidate = safe
+    i = 2
+    while candidate in taken:
+        candidate = f"{safe}_{i}"
+        i += 1
+    taken.add(candidate)
+    return candidate
+
+
+def load_tables(specs: list[tuple[str, str]]) -> dict[str, pd.DataFrame]:
+    """Load several CSVs into an ordered ``{table_name: DataFrame}`` map.
+
+    ``specs`` is a list of ``(table_name, storage_path)`` pairs (already
+    de-duplicated by :func:`table_name_for`).
+    """
+    return {tname: load_csv(path) for tname, path in specs}
