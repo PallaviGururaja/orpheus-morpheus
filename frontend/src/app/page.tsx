@@ -235,9 +235,11 @@ export default function Home() {
     <div className="flex h-screen flex-col bg-gray-50">
       <header className="flex items-center justify-between border-b border-slate-800 bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-3 text-white shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-base font-extrabold tracking-tight text-slate-900 shadow">
-            EB
-          </div>
+          <img
+            src="/app/ebco-logo.png"
+            alt="EBCO"
+            className="h-10 w-10 rounded-lg bg-white object-contain p-1 shadow"
+          />
           <div>
             <h1 className="text-base font-bold uppercase leading-tight tracking-[0.18em]">
               EBCO Private Limited
