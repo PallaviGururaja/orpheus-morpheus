@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import AnswerBlock from './components/AnswerBlock'
 import DashboardView from './components/dashboard/DashboardView'
 import FileBrowser from './components/FileBrowser'
+import HelpModal from './components/HelpModal'
 import HistoryPanel from './components/HistoryPanel'
 import ProfileCard from './components/ProfileCard'
 import QuestionBox from './components/QuestionBox'
@@ -53,6 +54,7 @@ export default function Home() {
 
   // Ask / Dashboard tab toggle (Phase 3 — the dashboard builder).
   const [tab, setTab] = useState<'ask' | 'dashboard'>('ask')
+  const [helpOpen, setHelpOpen] = useState(false)
 
   const openPickerRef = useRef<(() => void) | null>(null)
   const timerRef = useRef<number | null>(null)
@@ -302,6 +304,14 @@ export default function Home() {
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
             On-device AI
           </span>
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            data-testid="help-button"
+            className="flex h-7 items-center gap-1.5 rounded-full border border-slate-600 px-3 text-xs font-medium text-slate-200 hover:bg-slate-700"
+          >
+            <span aria-hidden>?</span> Help
+          </button>
         </div>
       </header>
 
@@ -432,6 +442,8 @@ export default function Home() {
       {browserOpen && (
         <FileBrowser onPick={handleLoadLocal} onClose={() => setBrowserOpen(false)} />
       )}
+
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
 
       <Toast message={toast} onClose={() => setToast(null)} />
     </div>
