@@ -13,9 +13,12 @@ class GeminiProvider:
     def call_model(
         self, prompt: str, *, system: str | None = None, max_tokens: int | None = None
     ) -> str:
+        # Disable "thinking" — gemini-2.5-flash otherwise spends the output-token
+        # budget on hidden reasoning (truncating short replies) and is slower.
         config = types.GenerateContentConfig(
             system_instruction=system,
             max_output_tokens=max_tokens,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         )
         response = self._client.models.generate_content(
             model=self._model,

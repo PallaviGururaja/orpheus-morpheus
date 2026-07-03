@@ -203,6 +203,13 @@ export async function getFollowups(queryId: string): Promise<string[]> {
   return data.followups ?? []
 }
 
+// Starter questions for a freshly loaded dataset (shown in the chat).
+export async function getSuggestions(datasetId: string): Promise<string[]> {
+  const res = await fetch(`/datasets/${datasetId}/suggestions`)
+  const data = await parse<{ suggestions: string[] }>(res)
+  return data.suggestions ?? []
+}
+
 export async function rerunQuery(queryId: string, code: string): Promise<AskResponse> {
   const res = await fetch(`/queries/${queryId}/rerun`, {
     method: 'POST',

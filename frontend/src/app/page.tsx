@@ -14,6 +14,7 @@ import UploadPanel from './components/UploadPanel'
 import {
   ApiError,
   getFollowups,
+  getSuggestions,
   listQueries,
   loadLocalDataset,
   rerunQuery,
@@ -35,6 +36,7 @@ export default function Home() {
 
   const [answer, setAnswer] = useState<AskResponse | null>(null)
   const [followups, setFollowups] = useState<string[]>([])
+  const [suggestions, setSuggestions] = useState<string[]>([])
   const [lastQuestion, setLastQuestion] = useState('')
   const [askError, setAskError] = useState<string | null>(null)
 
@@ -102,6 +104,10 @@ export default function Home() {
         prev.includes(result.dataset_id) ? prev : [...prev, result.dataset_id],
       )
       void refreshHistory(result.session_id)
+      // Fetch starter question suggestions for this dataset (non-blocking).
+      getSuggestions(result.dataset_id)
+        .then(setSuggestions)
+        .catch(() => setSuggestions([]))
     },
     [refreshHistory],
   )
@@ -382,6 +388,28 @@ export default function Home() {
           {/* Pinned prompt bar at the bottom. */}
           <div className="border-t border-gray-200 bg-white">
             <div className="mx-auto max-w-3xl px-6 py-4">
+              {datasets.length > 0 &&
+                !answer &&
+                !streaming &&
+                suggestions.length > 0 && (
+                  <div className="mb-3">
+                    <p className="mb-1.5 text-xs font-medium text-gray-500">
+                      Try asking:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {suggestions.map(s => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => runQuestion(s)}
+                          className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-left text-xs font-medium text-blue-700 transition hover:bg-blue-100"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               {datasets.length > 0 ? (
                 <QuestionBox
                   onAsk={runQuestion}

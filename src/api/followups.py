@@ -9,9 +9,18 @@ from sqlalchemy.orm import Session
 from api._common import ok, api_error
 from db.models import Dataset, Query
 from db.session import get_session
-from graph.followups import generate_followups
+from graph.followups import generate_followups, generate_starter_questions
 
 router = APIRouter()
+
+
+@router.get("/datasets/{dataset_id}/suggestions")
+def suggestions(dataset_id: str, session: Session = Depends(get_session)) -> dict:
+    """Starter questions to ask about a freshly loaded dataset (chat helper)."""
+    ds = session.get(Dataset, dataset_id)
+    if ds is None:
+        raise api_error("NOT_FOUND", f"No such dataset: {dataset_id}", 404)
+    return ok({"suggestions": generate_starter_questions(ds.profile or {})})
 
 
 @router.get("/queries/{query_id}/followups")

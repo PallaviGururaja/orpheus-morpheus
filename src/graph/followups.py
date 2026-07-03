@@ -42,6 +42,36 @@ def _parse_followups(raw: str, limit: int = 3) -> list[str]:
     return out
 
 
+def generate_starter_questions(profile: dict, limit: int = 4) -> list[str]:
+    """Propose starter questions to ask about a freshly loaded dataset.
+
+    Seeded only from the column profile (names/types/stats). Returns [] on any
+    failure (non-fatal), so the chat still works without suggestions.
+    """
+    try:
+        cols = profile.get("columns", []) if profile else []
+        schema = ", ".join(f"{c.get('name')} ({c.get('dtype')})" for c in cols)
+        prompt = (
+            f"A user just loaded a dataset with these columns: {schema}.\n"
+            f"Row count: {profile.get('row_count', '?')}.\n\n"
+            f"Suggest {limit} concise, useful analysis questions a business user "
+            "could ask about THIS data. Use the real column names. One question "
+            "per line, no numbering, no preamble."
+        )
+        client = LLMClient()
+        raw = client.call_model(
+            prompt,
+            system="You suggest short, specific data-analysis questions.",
+            max_tokens=200,
+        )
+        out = _parse_followups(raw, limit=limit)
+        _log.info("starter.generated", count=len(out))
+        return out
+    except Exception as exc:  # noqa: BLE001 — non-fatal by contract
+        _log.error("starter.error", error=str(exc))
+        return []
+
+
 def generate_followups(question: str, answer_text: str, profile: dict) -> list[str]:
     """Propose 2-3 follow-up questions. Returns [] on any failure (non-fatal)."""
     try:
