@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-// Drag/drop or pick a single CSV. Emits the chosen File to the parent, which
-// owns the POST /datasets call and the loading/error state.
+// Drag/drop or pick a single CSV or Excel (.xlsx) file. Emits the chosen File to
+// the parent, which owns the POST /datasets call and the loading/error state.
 export default function UploadPanel({
   onFile,
   loading,
@@ -33,12 +33,10 @@ export default function UploadPanel({
   function pick(files: FileList | null) {
     const file = files?.[0]
     if (!file) return
-    // Phase 1 is CSV-only. The picker no longer filters by extension (so your
-    // downloaded file always shows up), so validate here with a clear message.
-    if (!/\.csv$/i.test(file.name)) {
+    // CSV or Excel (.xlsx / .xls) are supported; the server validates too.
+    if (!/\.(csv|xlsx|xls)$/i.test(file.name)) {
       setLocalError(
-        `“${file.name}” isn’t a CSV. Phase 1 supports CSV files only — ` +
-          `if it’s an Excel file, re-save it as CSV (File → Save As → CSV) and upload that.`,
+        `“${file.name}” isn’t supported. Please choose a .csv or .xlsx file.`,
       )
       return
     }
@@ -67,6 +65,7 @@ export default function UploadPanel({
         <input
           ref={inputRef}
           type="file"
+          accept=".csv,.xlsx,.xls"
           className="hidden"
           data-testid="file-input"
           onChange={e => pick(e.target.files)}
@@ -80,7 +79,7 @@ export default function UploadPanel({
         ) : (
           <>
             <p className="text-sm font-medium text-gray-700">
-              {hasDataset ? 'Replace CSV' : 'Drop a CSV here, or'}
+              {hasDataset ? 'Replace dataset' : 'Drop a CSV or Excel file here, or'}
             </p>
             <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
               <button
@@ -99,7 +98,7 @@ export default function UploadPanel({
               </button>
             </div>
             <p className="mt-2 text-xs text-gray-400">
-              CSV only in Phase 1 · nothing leaves your machine
+              CSV or Excel (.xlsx) · nothing leaves your machine
             </p>
           </>
         )}

@@ -16,11 +16,12 @@
 | Streaming step trace + timer | 2 | [streaming-step-trace.md](streaming-step-trace.md) |
 | Follow-up suggestions | 2 | [followup-suggestions.md](followup-suggestions.md) |
 | Editable code rerun | 2 | [editable-rerun.md](editable-rerun.md) |
-| DB-table connection | 3 | [db-table-connection.md](db-table-connection.md) |
-| Excel ingestion | 3 | [excel-ingestion.md](excel-ingestion.md) |
-| Large-data sampling (DuckDB) | 3 | [large-data-sampling.md](large-data-sampling.md) |
+| Drag-and-drop dashboard builder (headline) | 3 | [dashboard-builder.md](dashboard-builder.md) |
 | CSV export | 3 | [csv-export.md](csv-export.md) |
+| Excel ingestion | 3 | [excel-ingestion.md](excel-ingestion.md) |
 | Cross-day session resume | 3 | [session-resume.md](session-resume.md) |
+| DB-table connection (lowest priority; may defer to P4) | 3 | [db-table-connection.md](db-table-connection.md) |
+| Large-data sampling (DuckDB) | 4 (deferred) | [large-data-sampling.md](large-data-sampling.md) |
 
 ## How to Add a New Capability
 

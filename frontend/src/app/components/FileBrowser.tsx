@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { ApiError, browseFiles } from '../lib/api'
 import type { BrowseResponse } from '../lib/types'
 
-// In-app file browser for local CSVs — a reliable alternative to the OS file
+// In-app file browser for local CSV / Excel files — a reliable alternative to the OS file
 // dialog (which misbehaves on some Windows setups). Confined server-side to the
 // user's home folder.
 export default function FileBrowser({
@@ -55,7 +55,7 @@ export default function FileBrowser({
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-          <h2 className="text-sm font-semibold text-gray-900">Choose a CSV from your computer</h2>
+          <h2 className="text-sm font-semibold text-gray-900">Choose a CSV or Excel file from your computer</h2>
           <button
             onClick={onClose}
             className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
@@ -128,7 +128,7 @@ export default function FileBrowser({
               ))}
               {data.dirs.length === 0 && data.files.length === 0 && (
                 <p className="px-3 py-4 text-sm text-gray-400">
-                  No sub-folders or CSV files here. Use the shortcuts above or “↑ Up”.
+                  No sub-folders or CSV/Excel files here. Use the shortcuts above or “↑ Up”.
                 </p>
               )}
             </ul>

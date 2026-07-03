@@ -23,9 +23,51 @@ def store_upload(dataset_id: str, filename: str, content: bytes) -> str:
     return str(path)
 
 
-def load_csv(path: str) -> pd.DataFrame:
-    """Load a CSV file from disk into a pandas DataFrame."""
+EXCEL_EXTS = (".xlsx", ".xls")
+ACCEPTED_EXTS = (".csv",) + EXCEL_EXTS
+
+
+def is_excel(path: str) -> bool:
+    """True when *path* names an Excel workbook (by extension)."""
+    return str(path).lower().endswith(EXCEL_EXTS)
+
+
+def source_type_for(path: str) -> str:
+    """Return the dataset ``source_type`` for a file path (``excel`` or ``csv``)."""
+    return "excel" if is_excel(path) else "csv"
+
+
+def _coerce_sheet(sheet: str | int | None):
+    """Normalise a sheet selector: default → first sheet (0); digits → index."""
+    if sheet is None or sheet == "":
+        return 0
+    if isinstance(sheet, int):
+        return sheet
+    s = str(sheet).strip()
+    return int(s) if s.isdigit() else s
+
+
+def load_dataframe(path: str, sheet: str | int | None = None) -> pd.DataFrame:
+    """Load a CSV or Excel file from disk into a pandas DataFrame.
+
+    Excel workbooks (``.xlsx`` / ``.xls``) are read via ``openpyxl``. The first
+    sheet is loaded by default; ``sheet`` selects another by name or 0-based
+    index. CSVs ignore ``sheet``. Both flow through the identical profiler and
+    persistence path downstream.
+    """
+    if is_excel(path):
+        return pd.read_excel(path, sheet_name=_coerce_sheet(sheet), engine="openpyxl")
     return pd.read_csv(path)
+
+
+def load_csv(path: str) -> pd.DataFrame:
+    """Load a dataset file from disk into a DataFrame (extension-dispatched).
+
+    Retained for backwards compatibility with existing callers; now also loads
+    Excel workbooks (first sheet) so persisted datasets behave identically
+    downstream regardless of source format.
+    """
+    return load_dataframe(path)
 
 
 def table_name_for(name: str, taken: set[str]) -> str:
@@ -56,4 +98,4 @@ def load_tables(specs: list[tuple[str, str]]) -> dict[str, pd.DataFrame]:
     ``specs`` is a list of ``(table_name, storage_path)`` pairs (already
     de-duplicated by :func:`table_name_for`).
     """
-    return {tname: load_csv(path) for tname, path in specs}
+    return {tname: load_dataframe(path) for tname, path in specs}

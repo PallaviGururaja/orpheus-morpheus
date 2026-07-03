@@ -1,6 +1,7 @@
 'use client'
 
 import type { DatasetResponse } from '../lib/types'
+import SessionPicker from './SessionPicker'
 import { StubButton } from './Stub'
 
 // Left rail (Phase 2, real): the full list of datasets loaded in the session, each
@@ -106,7 +107,8 @@ export default function Sidebar({
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
           Sessions
         </h2>
-        <StubButton label="Switch session" phase="Phase 3" onStub={onStub} />
+        {/* Phase 3 (real): cross-day session resume. Replaces the old stub. */}
+        <SessionPicker />
       </div>
     </aside>
   )

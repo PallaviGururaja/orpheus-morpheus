@@ -1,11 +1,18 @@
 // Same-origin API client. The static build is served under /app/, the API lives at
 // the origin root (see spec/api.md), so all paths are absolute and origin-relative.
 import type {
+  AggregateRequest,
+  AggregateResponse,
   AskResponse,
   BrowseResponse,
+  Dashboard,
+  DashboardSummary,
   DatasetResponse,
   QuerySummary,
+  SessionDetail,
+  SessionSummary,
   StepEvent,
+  WidgetSpec,
 } from './types'
 
 export class ApiError extends Error {
@@ -203,4 +210,109 @@ export async function rerunQuery(queryId: string, code: string): Promise<AskResp
     body: JSON.stringify({ code }),
   })
   return parse<AskResponse>(res)
+}
+
+// --- Phase 3 ---
+
+// Download a query's persisted result_table as a CSV file. Streams the CSV bytes
+// from GET /queries/{id}/export and triggers a browser download via an object URL.
+export async function exportQueryCsv(queryId: string): Promise<void> {
+  const res = await fetch(`/queries/${queryId}/export`)
+  if (!res.ok) {
+    let code = 'error'
+    let message = `Request failed (${res.status})`
+    try {
+      const body = (await res.json()) as { detail?: { code?: string; message?: string } }
+      code = body?.detail?.code ?? code
+      message = body?.detail?.message ?? message
+    } catch {
+      // non-JSON error body; keep generic message
+    }
+    throw new ApiError(code, message, res.status)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  try {
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `query-${queryId}.csv`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+// --- Phase 3: dashboard builder (deterministic, no LLM) ---
+
+// Aggregate one loaded dataset for a single widget (spec/api.md POST /dashboard/aggregate).
+export async function aggregateWidget(
+  req: AggregateRequest,
+): Promise<AggregateResponse> {
+  const res = await fetch('/dashboard/aggregate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  return parse<AggregateResponse>(res)
+}
+
+export async function saveDashboard(
+  sessionId: string,
+  name: string,
+  widgets: WidgetSpec[],
+): Promise<Dashboard> {
+  const res = await fetch('/dashboards', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId, name, widgets }),
+  })
+  return parse<Dashboard>(res)
+}
+
+export async function updateDashboard(
+  id: string,
+  name: string,
+  widgets: WidgetSpec[],
+): Promise<Dashboard> {
+  const res = await fetch(`/dashboards/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, widgets }),
+  })
+  return parse<Dashboard>(res)
+}
+
+export async function listDashboards(
+  sessionId: string | null,
+): Promise<DashboardSummary[]> {
+  const url = sessionId
+    ? `/dashboards?session_id=${encodeURIComponent(sessionId)}`
+    : '/dashboards'
+  const data = await parse<{ dashboards: DashboardSummary[] }>(await fetch(url))
+  return data.dashboards ?? []
+}
+
+export async function getDashboard(id: string): Promise<Dashboard> {
+  return parse<Dashboard>(await fetch(`/dashboards/${id}`))
+}
+
+export async function deleteDashboard(id: string): Promise<void> {
+  await parse<{ deleted: boolean }>(
+    await fetch(`/dashboards/${id}`, { method: 'DELETE' }),
+  )
+}
+
+// --- Phase 3: session resume ---
+
+export async function listSessions(): Promise<SessionSummary[]> {
+  const data = await parse<{ sessions: SessionSummary[] }>(
+    await fetch('/sessions'),
+  )
+  return data.sessions ?? []
+}
+
+export async function getSession(sessionId: string): Promise<SessionDetail> {
+  return parse<SessionDetail>(await fetch(`/sessions/${sessionId}`))
 }

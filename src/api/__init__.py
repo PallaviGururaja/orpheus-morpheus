@@ -18,6 +18,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Data Analyst Agent", version="0.1.0", lifespan=_lifespan)
     from api import (
         health, datasets, ask, audit, stubs, local_files, rerun, followups,
+        export, dashboard, sessions,
     )
     app.include_router(health.router)
     app.include_router(datasets.router)
@@ -25,6 +26,9 @@ def create_app() -> FastAPI:
     app.include_router(ask.router)
     app.include_router(rerun.router)
     app.include_router(followups.router)
+    app.include_router(export.router)
+    app.include_router(dashboard.router)
+    app.include_router(sessions.router)
     app.include_router(audit.router)
     app.include_router(stubs.router)
 

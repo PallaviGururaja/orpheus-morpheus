@@ -5,7 +5,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.orm import Session
 
-from analysis.engine import load_csv, store_upload
+from analysis.engine import ACCEPTED_EXTS, load_dataframe, source_type_for, store_upload
 from analysis.profiler import profile_dataframe
 from api._common import ok, api_error
 from db.models import Dataset, Session as SessionRow
@@ -20,11 +20,12 @@ _log = get_logger("api.datasets")
 async def upload_dataset(
     file: UploadFile = File(...),
     session_id: str | None = Form(default=None),
+    sheet: str | None = Form(default=None),
     session: Session = Depends(get_session),
 ) -> dict:
     filename = file.filename or "dataset.csv"
-    if not filename.lower().endswith(".csv"):
-        raise api_error("BAD_REQUEST", "Only CSV files are supported in Phase 1.", 400)
+    if not filename.lower().endswith(ACCEPTED_EXTS):
+        raise api_error("BAD_REQUEST", "Only .csv and .xlsx files are supported.", 400)
 
     content = await file.read()
     if not content:
@@ -46,12 +47,15 @@ async def upload_dataset(
     dataset_id = str(uuid4())
     try:
         storage_path = store_upload(dataset_id, filename, content)
-        df = load_csv(storage_path)
+        df = load_dataframe(storage_path, sheet)
     except pd.errors.EmptyDataError:
-        raise api_error("BAD_REQUEST", "CSV file has no parseable data.", 400)
+        raise api_error("BAD_REQUEST", "File has no parseable data.", 400)
+    except ValueError as exc:
+        # pandas raises ValueError for an unknown Excel sheet name/index.
+        raise api_error("BAD_REQUEST", f"Could not read the file: {exc}", 400)
     except Exception as exc:  # noqa: BLE001
         _log.error("datasets.parse_error", error=str(exc))
-        raise api_error("BAD_REQUEST", f"Could not parse CSV: {exc}", 400)
+        raise api_error("BAD_REQUEST", f"Could not parse file: {exc}", 400)
 
     profile = profile_dataframe(df)
 
@@ -59,7 +63,7 @@ async def upload_dataset(
         id=dataset_id,
         session_id=session_id,
         name=filename,
-        source_type="csv",
+        source_type=source_type_for(filename),
         storage_path=storage_path,
         row_count=profile["row_count"],
         column_count=profile["column_count"],

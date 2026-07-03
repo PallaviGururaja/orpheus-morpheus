@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import AnswerBlock from './components/AnswerBlock'
+import DashboardView from './components/dashboard/DashboardView'
 import FileBrowser from './components/FileBrowser'
 import HistoryPanel from './components/HistoryPanel'
 import ProfileCard from './components/ProfileCard'
@@ -47,6 +48,9 @@ export default function Home() {
   const [queries, setQueries] = useState<QuerySummary[]>([])
   const [toast, setToast] = useState<string | null>(null)
   const [browserOpen, setBrowserOpen] = useState(false)
+
+  // Ask / Dashboard tab toggle (Phase 3 — the dashboard builder).
+  const [tab, setTab] = useState<'ask' | 'dashboard'>('ask')
 
   const openPickerRef = useRef<(() => void) | null>(null)
   const timerRef = useRef<number | null>(null)
@@ -249,10 +253,50 @@ export default function Home() {
             </p>
           </div>
         </div>
-        <span className="hidden items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300 sm:flex">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          On-device AI
-        </span>
+        <div className="flex items-center gap-4">
+          {/* Ask / Dashboard tab toggle (Phase 3). */}
+          <div
+            role="tablist"
+            aria-label="Workbench mode"
+            data-testid="mode-tabs"
+            className="flex items-center gap-1 rounded-full bg-slate-700/60 p-1"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'ask'}
+              data-testid="tab-ask"
+              onClick={() => setTab('ask')}
+              className={
+                'rounded-full px-4 py-1 text-xs font-semibold transition ' +
+                (tab === 'ask'
+                  ? 'bg-white text-slate-900 shadow'
+                  : 'text-slate-300 hover:text-white')
+              }
+            >
+              Ask
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'dashboard'}
+              data-testid="tab-dashboard"
+              onClick={() => setTab('dashboard')}
+              className={
+                'rounded-full px-4 py-1 text-xs font-semibold transition ' +
+                (tab === 'dashboard'
+                  ? 'bg-white text-slate-900 shadow'
+                  : 'text-slate-300 hover:text-white')
+              }
+            >
+              Dashboard
+            </button>
+          </div>
+          <span className="hidden items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300 sm:flex">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            On-device AI
+          </span>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -265,6 +309,9 @@ export default function Home() {
           onStub={showToast}
         />
 
+        {tab === 'dashboard' ? (
+          <DashboardView activeDataset={activeDataset} sessionId={sessionId} />
+        ) : (
         <main className="flex min-h-0 flex-1 flex-col">
           {/* Results scroll UP here; the ask box is pinned to the bottom. */}
           <div className="flex-1 overflow-y-auto">
@@ -349,8 +396,9 @@ export default function Home() {
             </div>
           </div>
         </main>
+        )}
 
-        <HistoryPanel queries={queries} onStub={showToast} />
+        {tab === 'ask' && <HistoryPanel queries={queries} onStub={showToast} />}
       </div>
 
       {browserOpen && (

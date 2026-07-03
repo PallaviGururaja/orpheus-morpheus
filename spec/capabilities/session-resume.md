@@ -21,9 +21,12 @@ Lets the user close the app and later reopen a prior session with its datasets (
 | Dataset store | Rehydrate dataset files/derived tables | Skip missing file with a flag |
 
 ## Business Rules
+- `GET /sessions` lists resumable sessions (title, dataset/query counts, `updated_at`); `GET /sessions/{id}` rehydrates datasets (with profiles) + query history.
 - Datasets are reloaded from the on-disk store; derived tables are reconstructed or reloaded.
 - Conversation history is restored into session memory so follow-ups continue seamlessly.
+- The frontend **session picker** (`SessionPicker.tsx`, mounted in `Sidebar.tsx`) replaces the "Switch session" stub.
 
 ## Success Criteria
-- [ ] Reopening a prior session restores its datasets (incl. derived) and question history.
+- [ ] `GET /sessions` returns prior sessions with dataset/query counts — `tests/phase3/test_session_resume.py`.
+- [ ] `GET /sessions/{id}` restores its datasets (incl. derived) and question history; unknown id → 404.
 - [ ] A follow-up in a resumed session has access to prior-turn context.

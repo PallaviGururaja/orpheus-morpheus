@@ -16,4 +16,13 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // If a live backend is already serving on BASE_URL it is reused (Phase-2 flow).
+  // Otherwise a static server hosts the exported `out/` build so the Phase-3
+  // dashboard E2E — which mocks the API via page.route — can run standalone.
+  webServer: {
+    command: 'node tests/e2e/static-server.mjs',
+    url: `${BASE_URL}/app/`,
+    reuseExistingServer: true,
+    timeout: 60_000,
+  },
 })

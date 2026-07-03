@@ -95,3 +95,19 @@ class Query(Base):
     )
 
     session: Mapped["Session"] = relationship(back_populates="queries")
+
+
+class Dashboard(Base):
+    """A named, saveable set of aggregated-chart widgets (Phase 3). No LLM."""
+
+    __tablename__ = "dashboards"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    widgets: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_now
+    )

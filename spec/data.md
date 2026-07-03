@@ -64,10 +64,25 @@ One row per analysis run — the full audit trail: question, exact code, result,
 | created_at | timestamptz | yes | Run start |
 | completed_at | timestamptz | no | Run end |
 
+### Entity: Dashboard (Phase 3)
+
+A named, saveable set of aggregated-chart widgets built by drag-and-drop, bound to a session. Deterministic — no LLM involved.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| id | text (uuid) | yes | Primary key |
+| session_id | text (fk → Session.id) | yes | Owning session |
+| name | text | yes | User-given dashboard name |
+| widgets | jsonb | yes | Ordered list of widget specs — each `{id, dimensions[], measure|null, agg, chart_type, layout{x,y,w,h}}` |
+| created_at | timestamptz | yes | Creation time |
+
+> New Alembic migration on head `dfeac34fb4f1` adds this table (slice `dashboard-backend`); existing migrations are not edited.
+
 ### Relationships
 
 - `Session 1 ── N Dataset` (cascade delete datasets with session).
 - `Session 1 ── N Query`.
+- `Session 1 ── N Dashboard` (cascade delete dashboards with session).
 - `Query.dataset_ids` references datasets by id (many-to-many captured as a jsonb id list; a physical join table is unnecessary for a single-user local tool).
 
 ## Data Lifecycle
@@ -75,7 +90,8 @@ One row per analysis run — the full audit trail: question, exact code, result,
 - **Create:** session on first upload; dataset on each upload/profile; query on each `POST /ask`.
 - **Update:** query row updated from `pending` → `completed`/`failed` at finalize; session `updated_at` bumped on activity.
 - **Derived datasets:** created mid-session by the agent, stored with `is_derived=true`, tied to the session.
-- **Delete:** deleting a session cascades its datasets (and their on-disk files) and queries. Nothing is auto-expired — audit history is retained for reproducibility.
+- **Dashboards (Phase 3):** created/updated on Save (`POST`/`PUT /dashboards`), deleted on `DELETE /dashboards/{id}`; the `widgets` JSONB fully captures the layout for reload.
+- **Delete:** deleting a session cascades its datasets (and their on-disk files), queries, and dashboards. Nothing is auto-expired — audit history is retained for reproducibility.
 
 ## Sensitive Data
 

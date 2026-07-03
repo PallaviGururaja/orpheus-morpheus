@@ -1,7 +1,9 @@
 'use client'
 
+import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { ApiError, exportQueryCsv } from '../lib/api'
 import type { AskResponse } from '../lib/types'
 import ChartView from './ChartView'
 import CodePanel from './CodePanel'
@@ -22,6 +24,23 @@ export default function AnswerBlock({
   onRerun: (code: string) => Promise<void>
 }) {
   const columns = answer.result_table.length > 0 ? Object.keys(answer.result_table[0]) : []
+
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const canExport = answer.result_table.length > 0
+
+  async function handleExport() {
+    if (exporting) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      await exportQueryCsv(answer.query_id)
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : 'Export failed.')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <section
@@ -51,6 +70,25 @@ export default function AnswerBlock({
       >
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{answer.answer_text}</ReactMarkdown>
       </div>
+
+      {canExport && (
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            type="button"
+            data-testid="export-csv"
+            onClick={handleExport}
+            disabled={exporting}
+            className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {exporting ? 'Exporting…' : 'Export CSV'}
+          </button>
+          {exportError && (
+            <span data-testid="export-error" className="text-xs text-red-600">
+              {exportError}
+            </span>
+          )}
+        </div>
+      )}
 
       {answer.result_table.length > 0 && (
         <div className="mt-4 overflow-x-auto" data-testid="result-table">

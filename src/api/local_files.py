@@ -13,7 +13,12 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from analysis.engine import load_csv, store_upload
+from analysis.engine import (
+    ACCEPTED_EXTS,
+    load_dataframe,
+    source_type_for,
+    store_upload,
+)
 from analysis.profiler import profile_dataframe
 from api._common import ok, api_error
 from db.models import Dataset, Session as SessionRow
@@ -64,7 +69,7 @@ def browse(path: str | None = None) -> dict:
             try:
                 if entry.is_dir():
                     dirs.append({"name": entry.name, "path": str(entry)})
-                elif entry.suffix.lower() == ".csv":
+                elif entry.suffix.lower() in ACCEPTED_EXTS:
                     files.append(
                         {"name": entry.name, "path": str(entry), "size": entry.stat().st_size}
                     )
@@ -88,6 +93,7 @@ def browse(path: str | None = None) -> dict:
 class LoadLocalRequest(BaseModel):
     path: str
     session_id: str | None = None
+    sheet: str | None = None
 
 
 @router.post("/datasets/local")
@@ -96,8 +102,8 @@ def load_local(body: LoadLocalRequest, session: Session = Depends(get_session)) 
     src = Path(body.path).resolve()
     if not _within_home(src):
         raise api_error("FORBIDDEN", "Access is limited to your home folder.", 403)
-    if not src.is_file() or src.suffix.lower() != ".csv":
-        raise api_error("BAD_REQUEST", "Please choose a .csv file.", 400)
+    if not src.is_file() or src.suffix.lower() not in ACCEPTED_EXTS:
+        raise api_error("BAD_REQUEST", "Please choose a .csv or .xlsx file.", 400)
 
     try:
         content = src.read_bytes()
@@ -122,12 +128,14 @@ def load_local(body: LoadLocalRequest, session: Session = Depends(get_session)) 
     dataset_id = str(uuid4())
     try:
         storage_path = store_upload(dataset_id, filename, content)
-        df = load_csv(storage_path)
+        df = load_dataframe(storage_path, body.sheet)
     except pd.errors.EmptyDataError:
-        raise api_error("BAD_REQUEST", "CSV file has no parseable data.", 400)
+        raise api_error("BAD_REQUEST", "File has no parseable data.", 400)
+    except ValueError as exc:
+        raise api_error("BAD_REQUEST", f"Could not read the file: {exc}", 400)
     except Exception as exc:  # noqa: BLE001
         _log.error("local.parse_error", error=str(exc))
-        raise api_error("BAD_REQUEST", f"Could not parse CSV: {exc}", 400)
+        raise api_error("BAD_REQUEST", f"Could not parse file: {exc}", 400)
 
     profile = profile_dataframe(df)
     session.add(
@@ -135,7 +143,7 @@ def load_local(body: LoadLocalRequest, session: Session = Depends(get_session)) 
             id=dataset_id,
             session_id=session_id,
             name=filename,
-            source_type="csv",
+            source_type=source_type_for(filename),
             storage_path=storage_path,
             row_count=profile["row_count"],
             column_count=profile["column_count"],

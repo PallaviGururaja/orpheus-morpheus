@@ -1,4 +1,6 @@
-# Capability: Large-Data Sampling (DuckDB) (Phase 3)
+# Capability: Large-Data Sampling (DuckDB) (Phase 4 — deferred)
+
+> **Deferred from Phase 3.** The revised Phase 3 headline is the drag-and-drop dashboard builder; large-data out-of-core sampling moves to Phase 4 so Phase 3 stays a coherent, testable increment. Kept here as the Phase-4 spec.
 
 ## What It Does
 Handles datasets from a few MB up to millions of rows via DuckDB out-of-core execution, using sampling/streaming when a full in-memory load is infeasible, and recording which path was used.

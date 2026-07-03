@@ -22,6 +22,7 @@ export interface DatasetResponse {
   profile: Profile
 }
 
+// Ask-tab charts (auto-picked by the agent).
 export type ChartType = 'bar' | 'line' | 'scatter'
 
 export interface ChartSpec {
@@ -29,6 +30,9 @@ export interface ChartSpec {
   x: string
   y: string
 }
+
+// --- Phase 3: dashboard-builder chart types (superset of the ask-tab ones) ---
+export type DashboardChartType = 'bar' | 'line' | 'scatter' | 'pie' | 'table'
 
 // A row of the summary/result table — arbitrary column keys.
 export type ResultRow = Record<string, string | number | boolean | null>
@@ -88,4 +92,91 @@ export interface StreamErrorEvent {
 export interface ApiError {
   code: string
   message: string
+}
+
+// --- Phase 3: dashboard builder (spec/api.md `POST /dashboard/aggregate`, `/dashboards`) ---
+
+export type AggType = 'sum' | 'avg' | 'count' | 'min' | 'max'
+
+// Client-side classification of a profile column, derived from its dtype.
+export type ColumnRole = 'dimension' | 'measure'
+
+export interface PaletteColumn {
+  name: string
+  dtype: string
+  role: ColumnRole
+}
+
+// The persisted/spec portion of a widget (mirrors the `widgets` JSONB entry).
+export interface WidgetLayout {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export interface WidgetSpec {
+  id: string
+  dimensions: string[]
+  measure: string | null
+  agg: AggType
+  chart_type: DashboardChartType
+  layout?: WidgetLayout
+}
+
+export interface AggregateRequest {
+  dataset_id: string
+  dimensions: string[]
+  measure: string | null
+  agg: AggType
+  chart_type: DashboardChartType
+}
+
+export interface AggregateResponse {
+  columns: string[]
+  rows: ResultRow[]
+  agg: AggType
+  measure: string | null
+  dimensions: string[]
+  chart_type: DashboardChartType
+  row_count: number
+  truncated: boolean
+}
+
+export interface DashboardSummary {
+  id: string
+  session_id: string
+  name: string
+  created_at: string
+}
+
+export interface Dashboard extends DashboardSummary {
+  widgets: WidgetSpec[]
+}
+
+// --- Phase 3: session resume (spec/api.md `GET /sessions`, `GET /sessions/{id}`) ---
+
+export interface SessionSummary {
+  id: string
+  title: string | null
+  dataset_count: number
+  query_count: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface SessionDataset extends DatasetResponse {
+  source_type: string
+  is_derived: boolean
+}
+
+export interface SessionDetail {
+  session: {
+    id: string
+    title: string | null
+    created_at: string | null
+    updated_at: string | null
+  }
+  datasets: SessionDataset[]
+  queries: QuerySummary[]
 }

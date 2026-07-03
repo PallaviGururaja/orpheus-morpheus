@@ -159,12 +159,183 @@ Dot-files are hidden; only `.csv` files are listed. `parent` is `null` at the ho
 | 400 | Empty/invalid code, or the edited code raised in the sandbox (the execution error is returned so the user can fix it) |
 | 409 | A run is in progress for the session (same reclaimable lock as `/ask`) |
 
-### Phase 3 — stubbed in Phase 1 (return 501)
+### Phase 3 — real
 
-- `POST /datasets/connect-db` — read-only local DB-table connection.
-- `POST /datasets` with `.xlsx` — Excel ingestion.
-- `GET /queries/{query_id}/export.csv` — download derived dataset/chart data as CSV.
-- `GET /sessions` — list resumable sessions for cross-day resume.
+> **Note (current reality):** the reasoning LLM is now cloud **Gemini** per `.env`. The dashboard-aggregation and export endpoints below are **deterministic and use NO LLM** — they compute in-process via pandas/DuckDB over already-loaded datasets.
+
+#### Dashboard builder (slice `dashboard-backend`)
+
+### `POST /dashboard/aggregate`
+**Purpose:** Deterministically aggregate one loaded dataset for a single dashboard widget. **No LLM.** Reuses `src/analysis` (new `aggregate.py` helper) over pandas/DuckDB. Validates that every named column exists in the dataset profile, caps output rows, and handles the no-measure `count` case.
+
+**Request:**
+```json
+{
+  "dataset_id": "uuid",
+  "dimensions": ["region", "category"],
+  "measure": "revenue",
+  "agg": "sum",
+  "chart_type": "bar"
+}
+```
+- `dimensions`: 0+ grouping columns (string / low-cardinality). Empty → a single aggregate row over the whole dataset.
+- `measure`: numeric column to aggregate, or `null` when `agg` is `count`.
+- `agg`: one of `sum` | `avg` | `count` | `min` | `max`.
+- `chart_type`: one of `bar` | `line` | `scatter` | `pie` | `table` (echoed back; does not change the numbers).
+
+**Response:**
+```json
+{ "data": {
+  "columns": ["region", "category", "revenue"],
+  "rows": [ {"region": "West", "category": "A", "revenue": 480000} ],
+  "agg": "sum",
+  "measure": "revenue",
+  "dimensions": ["region", "category"],
+  "chart_type": "bar",
+  "row_count": 12,
+  "truncated": false
+}}
+```
+`truncated` is `true` when the result exceeded the output-row cap (default 1000) and was clipped.
+
+**Error cases:**
+| Status | Condition |
+|--------|-----------|
+| 400 | Unknown `agg`/`chart_type`; a named column is not in the dataset profile; `measure` null while `agg` ≠ `count`; `measure` non-numeric |
+| 404 | Unknown `dataset_id` |
+
+### `POST /dashboards`
+**Purpose:** Persist a named dashboard (its widget layout + specs) to the `dashboard` table.
+
+**Request:** `{ "session_id": "uuid", "name": "Sales overview", "widgets": [ { "id": "w1", "dimensions": ["region"], "measure": "revenue", "agg": "sum", "chart_type": "bar", "layout": {"x": 0, "y": 0, "w": 6, "h": 4} } ] }`
+
+**Response:** `{ "data": { "id": "uuid", "session_id": "uuid", "name": "Sales overview", "widgets": [ … ], "created_at": "…" } }`
+
+**Error cases:**
+| Status | Condition |
+|--------|-----------|
+| 400 | Missing name / malformed widgets |
+| 404 | Unknown `session_id` |
+
+### `GET /dashboards`
+**Purpose:** List saved dashboards (optionally `?session_id=uuid`) for the dashboard picker.
+
+**Response:** `{ "data": { "dashboards": [ {"id": "uuid", "session_id": "uuid", "name": "Sales overview", "created_at": "…"} ] } }`
+
+### `GET /dashboards/{id}`
+**Purpose:** Load one saved dashboard with its full `widgets` JSONB for reload.
+
+**Response:** the full `Dashboard` entity (see `spec/data.md`).
+
+**Error cases:**
+| Status | Condition |
+|--------|-----------|
+| 404 | No such dashboard |
+
+### `PUT /dashboards/{id}`
+**Purpose:** Update a dashboard's name and/or widgets (save edits/rearrangement).
+
+**Request:** `{ "name": "Sales overview", "widgets": [ … ] }` — same widget shape as `POST /dashboards`.
+
+**Response:** the updated `Dashboard` entity.
+
+**Error cases:**
+| Status | Condition |
+|--------|-----------|
+| 404 | No such dashboard |
+| 400 | Malformed widgets |
+
+### `DELETE /dashboards/{id}`
+**Purpose:** Delete a saved dashboard.
+
+**Response:** `{ "data": { "deleted": true } }`
+
+**Error cases:**
+| Status | Condition |
+|--------|-----------|
+| 404 | No such dashboard |
+
+#### CSV export (slice `export`)
+
+### `GET /queries/{query_id}/export`
+**Purpose:** Download a persisted query's `result_table` as a CSV file. **No LLM.** Byte-for-byte reproducible from the audit row.
+
+**Response:** `Content-Type: text/csv`, `Content-Disposition: attachment; filename="query-<id>.csv"`; body = the `result_table` rows as CSV (header row from the table's keys).
+
+**Error cases:**
+| Status | Condition |
+|--------|-----------|
+| 404 | No such query |
+| 400 | Query has no `result_table` (e.g. failed run) |
+
+### `GET /dashboards/{id}/widgets/{widget_id}/export`
+**Purpose:** Download one dashboard widget's aggregated data as CSV. Recomputes the widget's `POST /dashboard/aggregate` spec server-side and streams the rows. (The frontend MAY instead export the widget's already-fetched rows as a client-side blob; this endpoint is the server-side equivalent for parity/testing.)
+
+**Response:** `Content-Type: text/csv`, `Content-Disposition: attachment; filename="widget-<widget_id>.csv"`.
+
+**Error cases:**
+| Status | Condition |
+|--------|-----------|
+| 404 | No such dashboard or widget id |
+| 400 | Widget spec no longer valid against the dataset |
+
+#### Excel ingestion (slice `excel`)
+
+### `POST /datasets` with `.xlsx` — real
+**Purpose:** The existing multipart upload now accepts `.xlsx` in addition to `.csv`. Loads the first sheet by default; an optional `sheet` form field selects another sheet. Same profile/response shape as the CSV path. `source_type` is recorded as `excel`.
+
+**Request:** `multipart/form-data` — `file` (`.csv` or `.xlsx`), optional `session_id`, optional `sheet` (name or index; Excel only).
+
+**Response:** identical shape to the CSV `POST /datasets`.
+
+**Error cases:**
+| Status | Condition |
+|--------|-----------|
+| 400 | Unreadable workbook / unknown `sheet` / unsupported extension |
+
+### `GET /local/browse` + `POST /datasets/local` — now list/accept `.xlsx`
+**Purpose:** The in-app file browser now lists `.xlsx` alongside `.csv`, and `POST /datasets/local` loads an `.xlsx` by path (optional `sheet` in the JSON body). Same response shapes as the CSV path.
+
+**Error cases:** as the CSV path, plus `400` for unknown `sheet`.
+
+#### Session resume (slice `session-resume`)
+
+### `GET /sessions`
+**Purpose:** List resumable sessions for the session picker.
+
+**Response:** `{ "data": { "sessions": [ {"id": "uuid", "title": "Sales analysis", "dataset_count": 2, "query_count": 14, "updated_at": "…"} ] } }`
+
+### `GET /sessions/{session_id}`
+**Purpose:** Load/rehydrate a prior session — its datasets (with profiles) and query history — so the workbench can restore state.
+
+**Response:**
+```json
+{ "data": {
+  "session": {"id": "uuid", "title": "Sales analysis", "updated_at": "…"},
+  "datasets": [ {"dataset_id": "uuid", "name": "orders.csv", "row_count": 12000, "column_count": 8, "profile": { … }, "source_type": "csv"} ],
+  "queries": [ {"query_id": "uuid", "question": "…", "created_at": "…", "verified": true} ]
+}}
+```
+
+**Error cases:**
+| Status | Condition |
+|--------|-----------|
+| 404 | No such session |
+
+#### DB-table connection (slice `db-connect`, lowest priority — may ship as a labelled Phase-4 stub)
+
+### `POST /datasets/connect-db`
+**Purpose:** Read-only connect to a **local** PostgreSQL/SQLite and load one table as a dataset, profiled like any upload. Read-only — never writes back. `source_type` = `db_table`.
+
+**Request:** `{ "dsn": "postgresql://localhost:5432/mydb" | "sqlite:///C:/path/db.sqlite", "table": "orders", "session_id": "uuid" | null }`
+
+**Response:** identical shape to `POST /datasets` (`session_id`, `dataset_id`, `name` = table name, `row_count`, `column_count`, `profile`).
+
+**Error cases:**
+| Status | Condition |
+|--------|-----------|
+| 400 | Non-local DSN rejected; unknown table; connection/read error surfaced |
+| 501 | If shipped as a deferred Phase-4 stub, returns 501 with a "coming in Phase 4" message |
 
 ## Authentication
 
