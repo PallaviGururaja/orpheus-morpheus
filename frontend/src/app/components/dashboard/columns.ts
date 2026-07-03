@@ -19,6 +19,7 @@ export function paletteColumns(profile: Profile | null | undefined): PaletteColu
     name: c.name,
     dtype: c.dtype,
     role: columnRole(c.dtype),
+    distinct: c.distinct,
   }))
 }
 

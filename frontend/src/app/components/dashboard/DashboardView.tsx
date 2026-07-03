@@ -7,6 +7,7 @@ import ColumnPalette from './ColumnPalette'
 import DashboardToolbar from './DashboardToolbar'
 import Widget from './Widget'
 import { paletteColumns } from './columns'
+import { availableTemplates, type DashboardTemplate } from './templates'
 
 let widgetSeq = 0
 function newWidget(): WidgetSpec {
@@ -67,6 +68,16 @@ export default function DashboardView({
     setCurrentId(null)
     setSaveError(null)
   }, [])
+
+  const applyTemplate = useCallback(
+    (tpl: DashboardTemplate) => {
+      setWidgets(tpl.build(columns))
+      setName(prev => prev.trim() || `${tpl.name} — ${activeDataset?.name ?? ''}`.trim())
+      setCurrentId(null)
+      setSaveError(null)
+    },
+    [columns, activeDataset],
+  )
 
   const handleSave = useCallback(async () => {
     if (!sessionId) {
@@ -134,20 +145,54 @@ export default function DashboardView({
               </p>
             </div>
           ) : widgets.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
-              <p className="text-sm font-medium text-gray-700">Build your dashboard</p>
-              <p className="mt-1 text-sm text-gray-400">
-                Click <span className="font-medium">+ Add widget</span>, then drag a
-                dimension and a measure into it. No typing, no waiting on the model.
-              </p>
-              <button
-                type="button"
-                onClick={addWidget}
-                data-testid="add-widget-empty"
-                className="mt-4 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
-              >
-                + Add your first widget
-              </button>
+            <div className="mx-auto max-w-3xl space-y-4">
+              {availableTemplates(columns).length > 0 && (
+                <div className="rounded-xl border border-gray-200 bg-white p-5">
+                  <p className="text-sm font-semibold text-gray-900">
+                    Predefined dashboards
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    One click builds a ready-made dashboard from this dataset&rsquo;s
+                    columns.
+                  </p>
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {availableTemplates(columns).map(tpl => (
+                      <button
+                        key={tpl.key}
+                        type="button"
+                        data-testid={`template-${tpl.key}`}
+                        onClick={() => applyTemplate(tpl)}
+                        className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-left transition hover:border-blue-300 hover:bg-blue-100"
+                      >
+                        <span className="block text-sm font-semibold text-blue-800">
+                          {tpl.name}
+                        </span>
+                        <span className="mt-1 block text-xs text-blue-700/80">
+                          {tpl.description}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
+                <p className="text-sm font-medium text-gray-700">
+                  …or build your own
+                </p>
+                <p className="mt-1 text-sm text-gray-400">
+                  Click <span className="font-medium">+ Add widget</span>, then drag a
+                  dimension and a measure into it. No typing, no waiting on the model.
+                </p>
+                <button
+                  type="button"
+                  onClick={addWidget}
+                  data-testid="add-widget-empty"
+                  className="mt-4 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+                >
+                  + Add your first widget
+                </button>
+              </div>
             </div>
           ) : (
             <div

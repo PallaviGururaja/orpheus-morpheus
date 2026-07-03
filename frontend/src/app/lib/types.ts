@@ -105,6 +105,7 @@ export interface PaletteColumn {
   name: string
   dtype: string
   role: ColumnRole
+  distinct?: number
 }
 
 // The persisted/spec portion of a widget (mirrors the `widgets` JSONB entry).
