@@ -6,6 +6,7 @@ pragmatic guardrail for a single-user local tool, not a hardened sandbox.
 """
 import builtins
 import io
+import math
 from contextlib import redirect_stdout
 from typing import Any
 
@@ -101,6 +102,8 @@ def _to_result_table(result: Any) -> list[dict]:
             val = int(val)
         elif isinstance(val, (np.floating,)):
             val = float(val)
+        if isinstance(val, float) and not math.isfinite(val):
+            val = None
         return [{"value": val}]
 
     df = df.where(pd.notna(df), None)
@@ -113,7 +116,7 @@ def _to_result_table(result: Any) -> list[dict]:
             if isinstance(v, (np.integer,)):
                 v = int(v)
             elif isinstance(v, (np.floating,)):
-                v = float(v) if not pd.isna(v) else None
+                v = float(v)
             elif isinstance(v, (np.bool_,)):
                 v = bool(v)
             elif hasattr(v, "item"):
@@ -121,6 +124,11 @@ def _to_result_table(result: Any) -> list[dict]:
                     v = v.item()
                 except Exception:
                     v = str(v)
+            # JSON/JSONB cannot represent NaN or Inf. This catches both numpy
+            # floats (coerced above) and native Python floats that to_dict emits
+            # for null-containing columns — otherwise Postgres rejects the row.
+            if isinstance(v, float) and not math.isfinite(v):
+                v = None
             clean[str(k)] = v
         out.append(clean)
     return out
