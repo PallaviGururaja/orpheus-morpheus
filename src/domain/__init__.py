@@ -1,3 +1,3 @@
-from domain.run import RunRequest, RunResponse
+from domain.schemas import AskRequest
 
-__all__ = ["RunRequest", "RunResponse"]
+__all__ = ["AskRequest"]

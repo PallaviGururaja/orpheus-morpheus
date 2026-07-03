@@ -1,54 +1,29 @@
-"""Settings + provider auto-detection — no LLM key required."""
+"""Settings + provider factory — no live LLM required."""
 import pytest
-import os
 
 
-def test_auto_detects_anthropic(monkeypatch, tmp_path):
-    monkeypatch.setenv("AGENT_ANTHROPIC_API_KEY", "sk-ant-fake")
-    monkeypatch.setenv("AGENT_GEMINI_API_KEY", "")
-    monkeypatch.setenv("AGENT_LLM_PROVIDER", "")
-    monkeypatch.setenv("AGENT_DATABASE_URL", f"sqlite:///{tmp_path}/t.db")
-
+def test_defaults_are_local(monkeypatch):
+    monkeypatch.delenv("AGENT_LLM_PROVIDER", raising=False)
     import config.settings as m
     m._settings = None
     s = m.get_settings()
-    assert s.anthropic_api_key == "sk-ant-fake"
-    assert s.gemini_api_key == ""
+    assert s.llm_provider == "ollama"
+    assert s.llm_base_url == "http://localhost:11434/v1"
+    assert s.llm_model == "qwen2.5-coder:7b"
+    assert s.database_url.startswith("postgresql+psycopg")
 
 
-def test_auto_detects_gemini(monkeypatch, tmp_path):
-    monkeypatch.setenv("AGENT_ANTHROPIC_API_KEY", "")
-    monkeypatch.setenv("AGENT_GEMINI_API_KEY", "AIza-fake")
-    monkeypatch.setenv("AGENT_LLM_PROVIDER", "")
-    monkeypatch.setenv("AGENT_DATABASE_URL", f"sqlite:///{tmp_path}/t.db")
-
-    import config.settings as m
-    m._settings = None
-    s = m.get_settings()
-    assert s.gemini_api_key == "AIza-fake"
-
-
-def test_provider_raises_with_no_key(monkeypatch, tmp_path):
-    monkeypatch.setenv("AGENT_ANTHROPIC_API_KEY", "")
-    monkeypatch.setenv("AGENT_GEMINI_API_KEY", "")
-    monkeypatch.setenv("AGENT_LLM_PROVIDER", "")
-    monkeypatch.setenv("AGENT_DATABASE_URL", f"sqlite:///{tmp_path}/t.db")
-
-    import config.settings as m
-    m._settings = None
-
+def test_ollama_provider_built():
     from llm.client import _make_provider
-    with pytest.raises(RuntimeError, match="No LLM provider configured"):
-        _make_provider()
+    from llm.providers.ollama import OllamaProvider
+    provider = _make_provider()
+    assert isinstance(provider, OllamaProvider)
 
 
-def test_explicit_provider_wins(monkeypatch, tmp_path):
-    monkeypatch.setenv("AGENT_ANTHROPIC_API_KEY", "sk-ant-fake")
-    monkeypatch.setenv("AGENT_GEMINI_API_KEY", "AIza-fake")
-    monkeypatch.setenv("AGENT_LLM_PROVIDER", "gemini")
-    monkeypatch.setenv("AGENT_DATABASE_URL", f"sqlite:///{tmp_path}/t.db")
-
+def test_unknown_provider_raises(monkeypatch):
+    monkeypatch.setenv("AGENT_LLM_PROVIDER", "nope")
     import config.settings as m
     m._settings = None
-    s = m.get_settings()
-    assert s.llm_provider == "gemini"
+    from llm.client import _make_provider
+    with pytest.raises(RuntimeError, match="Unknown LLM provider"):
+        _make_provider()

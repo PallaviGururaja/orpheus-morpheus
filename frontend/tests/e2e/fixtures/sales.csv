@@ -1,0 +1,9 @@
+region,product,revenue,units,date
+West,Widget,480000,1200,2024-01-05
+East,Widget,310000,820,2024-01-06
+North,Gadget,150000,400,2024-01-07
+South,Gadget,90000,240,2024-01-08
+West,Gadget,120000,300,2024-01-09
+East,Widget,200000,560,2024-01-10
+North,Widget,175000,470,2024-01-11
+South,Widget,85000,220,2024-01-12
