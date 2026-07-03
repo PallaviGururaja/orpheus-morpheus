@@ -51,6 +51,12 @@ export default function Home() {
   const openPickerRef = useRef<(() => void) | null>(null)
   const timerRef = useRef<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const resultsEndRef = useRef<HTMLDivElement | null>(null)
+
+  // Keep the latest result in view (just above the pinned input) as it arrives.
+  useEffect(() => {
+    resultsEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [answer, streamedText, step, askError])
 
   useEffect(() => {
     return () => {
@@ -237,7 +243,7 @@ export default function Home() {
               EBCO Private Limited
             </h1>
             <p className="text-xs font-medium tracking-wide text-slate-300">
-              Data Analyst · fully local, nothing leaves this machine
+              Data Analyst · your raw data stays on this machine
             </p>
           </div>
         </div>
@@ -257,73 +263,88 @@ export default function Home() {
           onStub={showToast}
         />
 
-        <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto flex max-w-3xl flex-col gap-5 px-6 py-6">
-            <UploadPanel
-              onFile={handleUpload}
-              loading={uploadLoading}
-              error={uploadError}
-              hasDataset={datasets.length > 0}
-              registerOpen={open => {
-                openPickerRef.current = open
-              }}
-              onBrowse={() => setBrowserOpen(true)}
-            />
-
-            {activeDataset && <ProfileCard dataset={activeDataset} />}
-
-            {datasets.length > 0 && (
-              <QuestionBox
-                onAsk={runQuestion}
-                loading={streaming}
-                disabled={datasets.length === 0}
+        <main className="flex min-h-0 flex-1 flex-col">
+          {/* Results scroll UP here; the ask box is pinned to the bottom. */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="mx-auto flex max-w-3xl flex-col gap-5 px-6 py-6">
+              <UploadPanel
+                onFile={handleUpload}
+                loading={uploadLoading}
+                error={uploadError}
+                hasDataset={datasets.length > 0}
+                registerOpen={open => {
+                  openPickerRef.current = open
+                }}
+                onBrowse={() => setBrowserOpen(true)}
               />
-            )}
 
-            {askError && (
-              <div
-                role="alert"
-                data-testid="ask-error"
-                className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
-              >
-                <p className="font-medium">{askError}</p>
-                {lastQuestion && (
-                  <p className="mt-1 text-xs text-red-500">
-                    Your question was kept: &ldquo;{lastQuestion}&rdquo;
+              {activeDataset && <ProfileCard dataset={activeDataset} />}
+
+              {askError && (
+                <div
+                  role="alert"
+                  data-testid="ask-error"
+                  className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+                >
+                  <p className="font-medium">{askError}</p>
+                  {lastQuestion && (
+                    <p className="mt-1 text-xs text-red-500">
+                      Your question was kept: &ldquo;{lastQuestion}&rdquo;
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {streaming && (
+                <StepTrace
+                  step={step}
+                  totalSteps={totalSteps}
+                  elapsedMs={elapsedMs}
+                  text={streamedText}
+                />
+              )}
+
+              {answer && !streaming && (
+                <AnswerBlock
+                  answer={answer}
+                  question={lastQuestion}
+                  followups={followups}
+                  onFollowup={runQuestion}
+                  onRerun={handleRerun}
+                />
+              )}
+
+              {datasets.length === 0 && !uploadLoading && (
+                <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
+                  <p className="text-sm font-medium text-gray-700">
+                    Start by loading a dataset
                   </p>
-                )}
-              </div>
-            )}
+                  <p className="mt-1 text-sm text-gray-400">
+                    Upload a CSV to see its profile, then ask questions in plain English.
+                  </p>
+                </div>
+              )}
 
-            {streaming && (
-              <StepTrace
-                step={step}
-                totalSteps={totalSteps}
-                elapsedMs={elapsedMs}
-                text={streamedText}
-              />
-            )}
+              {/* Anchor to keep the newest result in view above the input. */}
+              <div ref={resultsEndRef} />
+            </div>
+          </div>
 
-            {answer && !streaming && (
-              <AnswerBlock
-                answer={answer}
-                question={lastQuestion}
-                followups={followups}
-                onFollowup={runQuestion}
-                onRerun={handleRerun}
-              />
-            )}
-
-            {datasets.length === 0 && !uploadLoading && (
-              <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
-                <p className="text-sm font-medium text-gray-700">
-                  Start by loading a dataset
+          {/* Pinned prompt bar at the bottom. */}
+          <div className="border-t border-gray-200 bg-white">
+            <div className="mx-auto max-w-3xl px-6 py-4">
+              {datasets.length > 0 ? (
+                <QuestionBox
+                  onAsk={runQuestion}
+                  loading={streaming}
+                  disabled={datasets.length === 0}
+                />
+              ) : (
+                <p className="text-center text-sm text-gray-400">
+                  Load a dataset above to start asking questions.
                 </p>
-                <p className="mt-1 text-sm text-gray-400">
-                  Upload a CSV to see its profile, then ask questions in plain English.
-                </p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </main>
 
