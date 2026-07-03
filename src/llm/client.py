@@ -36,8 +36,14 @@ class LLMClient:
     def __init__(self) -> None:
         self._provider = _make_provider()
 
-    def call_model(self, prompt: str, *, system: str | None = None) -> str:
-        return self._provider.call_model(prompt, system=system)
+    def call_model(
+        self, prompt: str, *, system: str | None = None, max_tokens: int = 700
+    ) -> str:
+        try:
+            return self._provider.call_model(prompt, system=system, max_tokens=max_tokens)
+        except TypeError:
+            # Cloud providers (unused here) don't take max_tokens.
+            return self._provider.call_model(prompt, system=system)
 
     @property
     def last_usage(self) -> dict:

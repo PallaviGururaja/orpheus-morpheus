@@ -227,18 +227,24 @@ export default function Home() {
 
   return (
     <div className="flex h-screen flex-col bg-gray-50">
-      <header className="flex items-center gap-3 border-b border-gray-200 bg-white px-5 py-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white">
-          ◆
+      <header className="flex items-center justify-between border-b border-slate-800 bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-3 text-white shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-base font-extrabold tracking-tight text-slate-900 shadow">
+            EB
+          </div>
+          <div>
+            <h1 className="text-base font-bold uppercase leading-tight tracking-[0.18em]">
+              EBCO Private Limited
+            </h1>
+            <p className="text-xs font-medium tracking-wide text-slate-300">
+              Data Analyst · fully local, nothing leaves this machine
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-sm font-semibold tracking-tight text-gray-900">
-            Local Data Analyst
-          </h1>
-          <p className="text-xs text-gray-400">
-            Fully local · nothing leaves this machine
-          </p>
-        </div>
+        <span className="hidden items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300 sm:flex">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          On-device AI
+        </span>
       </header>
 
       <div className="flex min-h-0 flex-1">

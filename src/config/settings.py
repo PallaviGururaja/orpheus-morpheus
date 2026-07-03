@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # Agent loop bound
     max_steps: int = Field(default=6)
 
+    # Fast mode: skip the separate LLM "plan" call and let write_code work
+    # directly from the profile + question. Halves latency on slow local CPUs
+    # at a small cost to strategy on very complex questions.
+    fast_mode: bool = Field(default=True)
+
 
 _settings: Settings | None = None
 

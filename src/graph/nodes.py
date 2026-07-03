@@ -11,6 +11,7 @@ from analysis.charts import select_chart
 from analysis.engine import load_csv, load_tables, table_name_for
 from analysis.executor import execute_python
 from analysis.profiler import profile_dataframe
+from config.settings import get_settings
 from db.models import Dataset
 from db.session import create_db_session
 from graph.state import AgentState
@@ -126,8 +127,21 @@ def plan(state: AgentState) -> AgentState:
         except Exception as exc:
             return {**state, "error": f"plan failed: {exc}"}
 
-        client = LLMClient()
         multi = len(profiles) > 1
+        # Fast mode: skip the separate strategy LLM call for single-dataset
+        # questions (write_code works fine from the profile + question). Keep
+        # the plan step for multi-dataset questions, where join strategy helps.
+        if get_settings().fast_mode and not multi:
+            _log.info(
+                "node.plan",
+                run_id=state.get("run_id"),
+                step=1,
+                tables=list(profiles.keys()),
+                fast=True,
+            )
+            return {**state, "plan": "", "profiles": profiles, "step": 1}
+
+        client = LLMClient()
         selection_hint = (
             "\nName WHICH table(s) are relevant and, if more than one is needed, "
             "the JOIN or UNION key columns. Use only the datasets the question "
@@ -160,6 +174,17 @@ def plan(state: AgentState) -> AgentState:
         return {**state, "error": f"plan failed: {exc}"}
 
 
+def _compact_schema(profiles: dict) -> str:
+    """One line per table: `table(col:type, col:type, ...)` — token-lean."""
+    lines = []
+    for tname, prof in profiles.items():
+        cols = ", ".join(
+            f"{c.get('name')}:{c.get('dtype')}" for c in prof.get("columns", [])
+        )
+        lines.append(f"{tname}({cols})")
+    return "\n".join(lines)
+
+
 def write_code(state: AgentState) -> AgentState:
     try:
         client = LLMClient()
@@ -181,7 +206,9 @@ def write_code(state: AgentState) -> AgentState:
                     "and registered on the DuckDB connection `con` under both names. "
                     "For SQL use `con.execute(sql).df()`, not duckdb.query()/duckdb.sql().\n"
                 )
-            profile_block = var_note + "Profiles:\n" + json.dumps(profiles, default=str)
+            # Compact schema (column name + type) — far fewer prompt tokens than the
+            # full profile JSON, which matters a lot for latency on CPU inference.
+            profile_block = var_note + "Schema:\n" + _compact_schema(profiles)
         else:
             profile_block = "Dataset profile:\n" + json.dumps(
                 state.get("profile", {}), default=str
@@ -198,7 +225,7 @@ def write_code(state: AgentState) -> AgentState:
                 f"Error:\n{state['exec_error']}"
             )
         prompt = "\n\n".join(parts) + "\n\nWrite the corrected Python code block."
-        raw = client.call_model(prompt, system=_prompt("write_code.md"))
+        raw = client.call_model(prompt, system=_prompt("write_code.md"), max_tokens=500)
         code = _extract_code(raw)
         _log.info("node.write_code", run_id=state.get("run_id"), step=state.get("step"))
         return {**state, "code": code, **_accumulate_tokens(state, client)}
@@ -270,7 +297,7 @@ def verify(state: AgentState) -> AgentState:
             f"Result table (rows):\n{table_preview}\n\n"
             "Write the final answer."
         )
-        answer = client.call_model(prompt, system=_prompt("verify.md"))
+        answer = client.call_model(prompt, system=_prompt("verify.md"), max_tokens=300)
         _log.info("node.verify", run_id=state.get("run_id"), verified=verified)
         return {
             **state,

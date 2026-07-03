@@ -17,7 +17,9 @@ class OllamaProvider:
         self._client = OpenAI(base_url=self._base_url, api_key="ollama")
         self.last_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
 
-    def call_model(self, prompt: str, *, system: str | None = None) -> str:
+    def call_model(
+        self, prompt: str, *, system: str | None = None, max_tokens: int = 700
+    ) -> str:
         messages: list[dict] = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -27,6 +29,10 @@ class OllamaProvider:
             model=self._model,
             messages=messages,
             temperature=0.0,
+            max_tokens=max_tokens,  # cap generation — big latency win on CPU
+            # Keep the model resident for 30 min so it isn't reloaded between the
+            # two calls of a question (or between questions). Ollama-specific.
+            extra_body={"keep_alive": "30m"},
         )
         usage = getattr(resp, "usage", None)
         self.last_usage = {
