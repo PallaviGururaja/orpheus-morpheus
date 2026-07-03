@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import AnswerBlock from './components/AnswerBlock'
 import HistoryPanel from './components/HistoryPanel'
 import ProfileCard from './components/ProfileCard'
@@ -25,6 +25,10 @@ export default function Home() {
 
   const [queries, setQueries] = useState<QuerySummary[]>([])
   const [toast, setToast] = useState<string | null>(null)
+
+  // The UploadPanel registers its "open file dialog" here so the sidebar
+  // "Add dataset" button can trigger the same picker.
+  const openPickerRef = useRef<(() => void) | null>(null)
 
   const showToast = useCallback((message: string) => {
     setToast(message)
@@ -105,7 +109,11 @@ export default function Home() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <Sidebar dataset={dataset} onStub={showToast} />
+        <Sidebar
+          dataset={dataset}
+          onStub={showToast}
+          onAddDataset={() => openPickerRef.current?.()}
+        />
 
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto flex max-w-3xl flex-col gap-5 px-6 py-6">
@@ -114,6 +122,9 @@ export default function Home() {
               loading={uploadLoading}
               error={uploadError}
               hasDataset={!!dataset}
+              registerOpen={open => {
+                openPickerRef.current = open
+              }}
             />
 
             {dataset && <ProfileCard dataset={dataset} />}

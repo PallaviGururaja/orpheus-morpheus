@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 // Drag/drop or pick a single CSV. Emits the chosen File to the parent, which
 // owns the POST /datasets call and the loading/error state.
@@ -9,18 +9,38 @@ export default function UploadPanel({
   loading,
   error,
   hasDataset,
+  registerOpen,
 }: {
   onFile: (file: File) => void
   loading: boolean
   error: string | null
   hasDataset: boolean
+  // Lets other UI (e.g. the sidebar "Add dataset" button) open this picker.
+  registerOpen?: (open: () => void) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  // Expose an imperative "open the file dialog" to the parent.
+  useEffect(() => {
+    registerOpen?.(() => inputRef.current?.click())
+  }, [registerOpen])
 
   function pick(files: FileList | null) {
     const file = files?.[0]
-    if (file) onFile(file)
+    if (!file) return
+    // Phase 1 is CSV-only. The picker no longer filters by extension (so your
+    // downloaded file always shows up), so validate here with a clear message.
+    if (!/\.csv$/i.test(file.name)) {
+      setLocalError(
+        `“${file.name}” isn’t a CSV. Phase 1 supports CSV files only — ` +
+          `if it’s an Excel file, re-save it as CSV (File → Save As → CSV) and upload that.`,
+      )
+      return
+    }
+    setLocalError(null)
+    onFile(file)
   }
 
   return (
@@ -44,7 +64,6 @@ export default function UploadPanel({
         <input
           ref={inputRef}
           type="file"
-          accept=".csv,text/csv"
           className="hidden"
           data-testid="file-input"
           onChange={e => pick(e.target.files)}
@@ -72,13 +91,13 @@ export default function UploadPanel({
         )}
       </div>
 
-      {error && (
+      {(localError || error) && (
         <div
           role="alert"
           data-testid="upload-error"
           className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
-          {error}
+          {localError || error}
         </div>
       )}
     </section>

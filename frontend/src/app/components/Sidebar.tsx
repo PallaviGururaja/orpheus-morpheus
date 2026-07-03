@@ -8,9 +8,12 @@ import { StubButton } from './Stub'
 export default function Sidebar({
   dataset,
   onStub,
+  onAddDataset,
 }: {
   dataset: DatasetResponse | null
   onStub: (message: string) => void
+  // Opens the real CSV uploader (Phase 1: loads/replaces the single dataset).
+  onAddDataset: () => void
 }) {
   return (
     <aside className="flex w-64 shrink-0 flex-col gap-4 border-r border-gray-200 bg-white p-4">
@@ -33,7 +36,13 @@ export default function Sidebar({
       <div>
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Sources</h2>
         <div className="flex flex-col gap-2">
-          <StubButton label="Add dataset" phase="Phase 2" onStub={onStub} />
+          <button
+            type="button"
+            onClick={onAddDataset}
+            className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-left text-sm font-medium text-blue-700 hover:bg-blue-100"
+          >
+            {dataset ? 'Replace dataset' : 'Add dataset'}
+          </button>
           <StubButton label="Connect DB" phase="Phase 3" onStub={onStub} />
           <StubButton label="Upload Excel" phase="Phase 3" onStub={onStub} />
         </div>
