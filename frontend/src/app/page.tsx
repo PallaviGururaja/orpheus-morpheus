@@ -2,13 +2,14 @@
 
 import { useCallback, useRef, useState } from 'react'
 import AnswerBlock from './components/AnswerBlock'
+import FileBrowser from './components/FileBrowser'
 import HistoryPanel from './components/HistoryPanel'
 import ProfileCard from './components/ProfileCard'
 import QuestionBox from './components/QuestionBox'
 import Sidebar from './components/Sidebar'
 import { Toast } from './components/Stub'
 import UploadPanel from './components/UploadPanel'
-import { ApiError, ask, listQueries, uploadDataset } from './lib/api'
+import { ApiError, ask, listQueries, loadLocalDataset, uploadDataset } from './lib/api'
 import type { AskResponse, DatasetResponse, QuerySummary } from './lib/types'
 
 // Local data-analysis workbench (Phase 1). One CSV → profile → one question →
@@ -25,6 +26,7 @@ export default function Home() {
 
   const [queries, setQueries] = useState<QuerySummary[]>([])
   const [toast, setToast] = useState<string | null>(null)
+  const [browserOpen, setBrowserOpen] = useState(false)
 
   // The UploadPanel registers its "open file dialog" here so the sidebar
   // "Add dataset" button can trigger the same picker.
@@ -64,6 +66,34 @@ export default function Home() {
       }
     },
     [dataset, refreshHistory],
+  )
+
+  const applyDataset = useCallback(
+    (result: DatasetResponse) => {
+      setDataset(result)
+      setAnswer(null)
+      setAskError(null)
+      void refreshHistory(result.session_id)
+    },
+    [refreshHistory],
+  )
+
+  const handleLoadLocal = useCallback(
+    async (path: string) => {
+      setBrowserOpen(false)
+      setUploadLoading(true)
+      setUploadError(null)
+      try {
+        applyDataset(await loadLocalDataset(path, dataset?.session_id ?? null))
+      } catch (e) {
+        setUploadError(
+          e instanceof ApiError ? e.message : 'Could not load that file.',
+        )
+      } finally {
+        setUploadLoading(false)
+      }
+    },
+    [dataset, applyDataset],
   )
 
   const handleAsk = useCallback(
@@ -112,7 +142,7 @@ export default function Home() {
         <Sidebar
           dataset={dataset}
           onStub={showToast}
-          onAddDataset={() => openPickerRef.current?.()}
+          onAddDataset={() => setBrowserOpen(true)}
         />
 
         <main className="flex-1 overflow-y-auto">
@@ -125,6 +155,7 @@ export default function Home() {
               registerOpen={open => {
                 openPickerRef.current = open
               }}
+              onBrowse={() => setBrowserOpen(true)}
             />
 
             {dataset && <ProfileCard dataset={dataset} />}
@@ -175,6 +206,10 @@ export default function Home() {
 
         <HistoryPanel queries={queries} onStub={showToast} />
       </div>
+
+      {browserOpen && (
+        <FileBrowser onPick={handleLoadLocal} onClose={() => setBrowserOpen(false)} />
+      )}
 
       <Toast message={toast} onClose={() => setToast(null)} />
     </div>

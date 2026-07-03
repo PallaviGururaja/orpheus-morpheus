@@ -1,6 +1,6 @@
 // Same-origin API client. The static build is served under /app/, the API lives at
 // the origin root (see spec/api.md), so all paths are absolute and origin-relative.
-import type { AskResponse, DatasetResponse, QuerySummary } from './types'
+import type { AskResponse, BrowseResponse, DatasetResponse, QuerySummary } from './types'
 
 export class ApiError extends Error {
   code: string
@@ -57,6 +57,23 @@ export async function ask(
     body: JSON.stringify({ session_id: sessionId, dataset_ids: datasetIds, question }),
   })
   return parse<AskResponse>(res)
+}
+
+export async function browseFiles(path: string | null): Promise<BrowseResponse> {
+  const url = path ? `/local/browse?path=${encodeURIComponent(path)}` : '/local/browse'
+  return parse<BrowseResponse>(await fetch(url))
+}
+
+export async function loadLocalDataset(
+  path: string,
+  sessionId: string | null,
+): Promise<DatasetResponse> {
+  const res = await fetch('/datasets/local', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, session_id: sessionId }),
+  })
+  return parse<DatasetResponse>(res)
 }
 
 export async function listQueries(sessionId: string): Promise<QuerySummary[]> {

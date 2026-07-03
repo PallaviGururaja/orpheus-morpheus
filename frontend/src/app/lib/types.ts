@@ -46,6 +46,20 @@ export interface AskResponse {
   elapsed_ms: number
 }
 
+export interface BrowseEntry {
+  name: string
+  path: string
+  size?: number
+}
+
+export interface BrowseResponse {
+  cwd: string
+  parent: string | null
+  shortcuts: { label: string; path: string }[]
+  dirs: BrowseEntry[]
+  files: BrowseEntry[]
+}
+
 export interface QuerySummary {
   query_id: string
   question: string

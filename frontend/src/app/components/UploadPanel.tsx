@@ -10,6 +10,7 @@ export default function UploadPanel({
   error,
   hasDataset,
   registerOpen,
+  onBrowse,
 }: {
   onFile: (file: File) => void
   loading: boolean
@@ -17,6 +18,8 @@ export default function UploadPanel({
   hasDataset: boolean
   // Lets other UI (e.g. the sidebar "Add dataset" button) open this picker.
   registerOpen?: (open: () => void) => void
+  // Opens the in-app file browser (reliable alternative to the OS dialog).
+  onBrowse: () => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
@@ -79,14 +82,25 @@ export default function UploadPanel({
             <p className="text-sm font-medium text-gray-700">
               {hasDataset ? 'Replace CSV' : 'Drop a CSV here, or'}
             </p>
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              className="mt-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              Choose file
-            </button>
-            <p className="mt-2 text-xs text-gray-400">CSV only in Phase 1 · nothing leaves your machine</p>
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={onBrowse}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                Browse my computer
+              </button>
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Use system dialog
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-gray-400">
+              CSV only in Phase 1 · nothing leaves your machine
+            </p>
           </>
         )}
       </div>
