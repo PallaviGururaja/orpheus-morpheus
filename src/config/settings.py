@@ -10,16 +10,31 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = Field(default="sqlite:///./data/agent.db")
+    # Storage — local PostgreSQL (audit trail / history)
+    database_url: str = Field(
+        default="postgresql+psycopg://postgres:postgres@localhost:5432/data_analyst"
+    )
     log_level: str = Field(default="INFO")
 
-    # LLM provider — auto-detected from whichever key is set if left blank
-    llm_provider: str = Field(default="")   # "anthropic" | "gemini"
-    llm_model: str = Field(default="")      # uses provider default when blank
+    # LLM — fully local via Ollama (OpenAI-compatible endpoint, no API key)
+    llm_provider: str = Field(default="ollama")   # "ollama" | "anthropic" | "gemini"
+    llm_base_url: str = Field(default="http://localhost:11434/v1")
+    llm_model: str = Field(default="qwen2.5-coder:7b")
 
-    # Provider keys — set exactly one
+    # Cloud provider keys — intentionally unused when provider is "ollama"
     anthropic_api_key: str = Field(default="")
     gemini_api_key: str = Field(default="")
+
+    # On-disk dataset store
+    dataset_store: str = Field(default="./data/datasets")
+
+    # Agent loop bound
+    max_steps: int = Field(default=6)
+
+    # Fast mode: skip the separate LLM "plan" call and let write_code work
+    # directly from the profile + question. Halves latency on slow local CPUs
+    # at a small cost to strategy on very complex questions.
+    fast_mode: bool = Field(default=True)
 
 
 _settings: Settings | None = None

@@ -1,3 +1,11 @@
+"""Shared test fixtures.
+
+Tests run against the REAL production PostgreSQL driver (from .env) and the REAL
+local Ollama model — never a SQLite substitute or a stubbed LLM. The DB is cleaned
+between tests by truncating the app tables. Tests skip cleanly when PostgreSQL or
+the Ollama model is genuinely unreachable.
+"""
+import httpx
 import pytest
 
 
@@ -9,36 +17,74 @@ def _reset_settings_singleton():
     m._settings = None
 
 
+def _db_reachable() -> bool:
+    try:
+        from sqlalchemy import text
+        from db.session import create_db_session
+        with create_db_session() as s:
+            s.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
+
+
 @pytest.fixture(autouse=True)
-def _isolated_db(tmp_path, monkeypatch):
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from db.models import Base
-    import db.session as session_module
+def _clean_db():
+    """Truncate app tables before each test. Skips if PostgreSQL is unreachable."""
+    if not _db_reachable():
+        pytest.skip("PostgreSQL not reachable (AGENT_DATABASE_URL) — real DB required")
+    from sqlalchemy import text
+    from db.session import create_db_session
 
-    engine = create_engine(f"sqlite:///{tmp_path}/test.db")
-    Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-    monkeypatch.setattr(session_module, "_engine", engine)
-    monkeypatch.setattr(session_module, "_SessionLocal", factory)
-    monkeypatch.setattr(session_module, "init_db", lambda: None)
-    yield engine
-    engine.dispose()
+    def _truncate():
+        with create_db_session() as s:
+            s.execute(text("TRUNCATE TABLE queries, datasets, sessions CASCADE"))
+
+    _truncate()
+    yield
+    _truncate()
+
+
+def _ollama_model_ready() -> bool:
+    """True only if the configured Ollama model is actually present and reachable."""
+    try:
+        from config.settings import get_settings
+        s = get_settings()
+        base = s.llm_base_url.rstrip("/")
+        resp = httpx.get(f"{base}/models", timeout=3.0)
+        if resp.status_code != 200:
+            return False
+        data = resp.json().get("data") or []
+        names = {m.get("id", "") for m in data}
+        model = s.llm_model
+        return any(model == n or n.startswith(model.split(":")[0]) for n in names)
+    except Exception:
+        return False
 
 
 @pytest.fixture
-def _require_llm_key():
-    """Skip if no LLM provider key is set — works for Anthropic or Gemini."""
-    from config.settings import get_settings
-    s = get_settings()
-    if not s.anthropic_api_key and not s.gemini_api_key:
-        pytest.skip("No LLM key set in .env (AGENT_ANTHROPIC_API_KEY or AGENT_GEMINI_API_KEY)")
+def _require_ollama():
+    if not _ollama_model_ready():
+        pytest.skip(
+            "Ollama model not reachable/ready (still pulling?) — real local LLM required"
+        )
 
 
 @pytest.fixture
-def api_client(_isolated_db):
-    """FastAPI test client with isolated DB."""
+def api_client():
     from fastapi.testclient import TestClient
     from api import app
     with TestClient(app) as client:
         yield client
+
+
+@pytest.fixture
+def sample_csv_bytes() -> bytes:
+    return (
+        "region,revenue,units\n"
+        "West,100,4\n"
+        "East,200,7\n"
+        "West,150,5\n"
+        "East,50,2\n"
+        "North,300,9\n"
+    ).encode("utf-8")
